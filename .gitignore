@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+env/
+.DS_Store
+generated_test_cases.json
+generated_test_cases.xlsx
