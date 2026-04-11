@@ -1,5 +1,8 @@
 from src.ingestion.normalizer import InputNormalizer
 from src.parsing.criteria_parser import CriteriaParser
+from src.scenario_expander.expander import ScenarioExpander
+from src.exporters.json_exporter import JSONExporter
+from src.exporters.excel_exporter import ExcelExporter
 
 
 def main():
@@ -12,17 +15,23 @@ def main():
 
     normalizer = InputNormalizer()
     parser = CriteriaParser()
+    expander = ScenarioExpander()
+    json_exporter = JSONExporter()
+    excel_exporter = ExcelExporter()
 
     normalized_items = normalizer.normalize(sample_input)
     parsed_items = parser.parse(normalized_items)
+    test_cases = expander.generate(parsed_items)
 
-    print("\n--- NORMALIZED ITEMS ---")
-    for item in normalized_items:
-        print(item.model_dump())
+    print("\n--- GENERATED TEST CASES ---")
+    for tc in test_cases:
+        print(tc.model_dump())
 
-    print("\n--- PARSED CRITERIA ---")
-    for parsed in parsed_items:
-        print(parsed.model_dump())
+    json_file = json_exporter.export(test_cases)
+    excel_file = excel_exporter.export(test_cases)
+
+    print(f"\nJSON exported: {json_file}")
+    print(f"Excel exported: {excel_file}")
 
 
 if __name__ == "__main__":
