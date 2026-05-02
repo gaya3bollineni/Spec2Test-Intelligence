@@ -25,6 +25,11 @@ input_text = st.text_area(
     height=220,
 )
 
+include_preconditions = st.checkbox(
+    "Include preconditions",
+    value=True
+)
+
 generate = st.button("Generate Test Cases", type="primary")
 
 if generate:
@@ -50,7 +55,7 @@ if generate:
                      "Scenario Type": tc.scenario_type,
                      "Test Scenario": tc.test_scenario,
                      "Description": tc.test_case_description,
-                     "Preconditions": "\n".join(tc.preconditions),
+                     **({"Preconditions": "\n".join(tc.preconditions)} if include_preconditions else {}),
                      "Steps": "\n".join([f"{i + 1}. {step}" for i, step in enumerate(tc.test_steps)]),
                      "Test Data": tc.test_data,
                      "Expected Result": tc.expected_result,
