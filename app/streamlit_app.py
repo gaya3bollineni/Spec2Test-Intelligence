@@ -65,7 +65,7 @@ if generate:
             df = pd.DataFrame(table_data)
 
             st.subheader("Generated Test Cases")
-            st.dataframe(df, use_container_width=True)
+            st.data_editor(df, use_container_width=True)
 
             json_str = json.dumps([tc.model_dump() for tc in test_cases], indent=2)
 
