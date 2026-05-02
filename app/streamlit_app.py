@@ -66,18 +66,6 @@ if generate:
 
             excel_buffer = io.BytesIO()
             export_df = df
-                '''columns={
-                    "test_case_id": "Test Case ID",
-                    "title": "Title",
-                    "scenario": "Scenario",
-                    "preconditions": "Preconditions",
-                    "test_steps": "Steps",
-                    "expected_result": "Expected Result",
-                    "priority": "Priority",
-                    "test_type": "Type",
-                    "source_criterion_id": "Source AC",
-                } '''
-            
             export_df.to_excel(excel_buffer, index=False, engine="openpyxl")
             excel_buffer.seek(0)
 
