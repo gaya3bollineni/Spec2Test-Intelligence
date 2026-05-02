@@ -44,10 +44,18 @@ if generate:
 
             table_data = []
             for tc in test_cases:
-                row = tc.model_dump()
-                row["preconditions"] = " | ".join(row["preconditions"])
-                row["test_steps"] = " -> ".join(row["test_steps"])
-                table_data.append(row)
+                table_data.append({
+                     "Test Case ID": tc.test_case_id,
+                     "Requirement ID": tc.requirement_id,
+                     "Scenario Type": tc.scenario_type,
+                     "Test Scenario": tc.test_scenario,
+                     "Description": tc.test_case_description,
+                     "Preconditions": "\n".join(tc.preconditions),
+                     "Steps": "\n".join([f"{i + 1}. {step}" for i, step in enumerate(tc.test_steps)]),
+                     "Test Data": tc.test_data,
+                     "Expected Result": tc.expected_result,
+                     "Priority": tc.priority,
+                })
 
             df = pd.DataFrame(table_data)
 
@@ -57,8 +65,8 @@ if generate:
             json_str = json.dumps([tc.model_dump() for tc in test_cases], indent=2)
 
             excel_buffer = io.BytesIO()
-            export_df = df.rename(
-                columns={
+            export_df = df
+                '''columns={
                     "test_case_id": "Test Case ID",
                     "title": "Title",
                     "scenario": "Scenario",
@@ -68,8 +76,8 @@ if generate:
                     "priority": "Priority",
                     "test_type": "Type",
                     "source_criterion_id": "Source AC",
-                }
-            )
+                } '''
+            
             export_df.to_excel(excel_buffer, index=False, engine="openpyxl")
             excel_buffer.seek(0)
 

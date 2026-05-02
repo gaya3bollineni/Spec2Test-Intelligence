@@ -64,14 +64,16 @@ class ScenarioExpander:
         test_cases.append(
             TestCase(
                 test_case_id=positive_id,
-                title=self.build_title(criterion, "Positive"),
-                scenario=criterion.raw_text,
+                requirement_id=criterion.id,
+                scenario_type="Positive",
+                test_scenario=self.build_title(criterion, "Positive"),
+                test_case_description=f"Validate that the system behaves as expected for: {criterion.raw_text}",
                 preconditions=self.build_preconditions(criterion),
                 test_steps=self.build_steps(criterion, "Positive"),
+                test_data="Valid input data",
                 expected_result=self.expected_builder.build(criterion, "Positive"),
                 priority="High" if criterion.rule_type in ["functional", "validation"] else "Medium",
-                test_type="Positive",
-                source_criterion_id=criterion.id,
+                source_criterion=criterion.raw_text,
             )
         )
 
@@ -80,14 +82,16 @@ class ScenarioExpander:
         test_cases.append(
             TestCase(
                 test_case_id=negative_id,
-                title=self.build_title(criterion, "Negative"),
-                scenario=f"Negative validation for: {criterion.raw_text}",
+                requirement_id=criterion.id,
+                scenario_type="Negative",
+                test_scenario=self.build_title(criterion, "Negative"),
+                test_case_description=f"Validate system behavior when invalid input is provided for: {criterion.raw_text}",
                 preconditions=self.build_preconditions(criterion),
                 test_steps=self.build_steps(criterion, "Negative"),
+                test_data="Invalid, blank, or incomplete input data",
                 expected_result=self.expected_builder.build(criterion, "Negative"),
                 priority="High",
-                test_type="Negative",
-                source_criterion_id=criterion.id,
+                source_criterion=criterion.raw_text,
             )
         )
 
@@ -96,14 +100,17 @@ class ScenarioExpander:
         test_cases.append(
             TestCase(
                 test_case_id=edge_id,
-                title=self.build_title(criterion, "Edge"),
-                scenario=f"Edge and boundary validation for: {criterion.raw_text}",
+                requirement_id=criterion.id,
+                scenario_type="Edge",
+                test_scenario=self.build_title(criterion, "Edge"),
+                test_case_description=f"Validate boundary and edge-case behavior for: {criterion.raw_text}",
                 preconditions=self.build_preconditions(criterion),
                 test_steps=self.build_steps(criterion, "Edge"),
+                test_data="Boundary values, nulls, blanks, special characters, min/max values",
                 expected_result=self.expected_builder.build(criterion, "Edge"),
                 priority="Medium",
-                test_type="Edge",
-                source_criterion_id=criterion.id,
+                source_criterion=criterion.raw_text,
+                
             )
         )
 

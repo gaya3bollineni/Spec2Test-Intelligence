@@ -20,11 +20,13 @@ class ParsedCriterion(BaseModel):
 
 class TestCase(BaseModel):
     test_case_id: str
-    title: str
-    scenario: str
+    requirement_id: str
+    scenario_type: str
+    test_scenario: str
+    test_case_description: str
     preconditions: List[str] = Field(default_factory=list)
     test_steps: List[str] = Field(default_factory=list)
+    test_data: Optional[str] = None
     expected_result: str
     priority: str = "Medium"
-    test_type: str = "Positive"
-    source_criterion_id: str
+    source_criterion: str
