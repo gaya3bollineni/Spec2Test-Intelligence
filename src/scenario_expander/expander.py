@@ -116,6 +116,12 @@ class ScenarioExpander:
 
         return test_cases
 
+    def build_action_specific_steps(
+               self,
+               criterion: ParsedCriterion,
+               scenario_type: str,
+                      ) -> List[str]:
+
     def generate(self, parsed_criteria: List[ParsedCriterion]) -> List[TestCase]:
         all_test_cases: List[TestCase] = []
 
