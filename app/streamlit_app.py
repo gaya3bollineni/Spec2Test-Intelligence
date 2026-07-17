@@ -1,5 +1,6 @@
 import io
 import json
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -15,17 +16,32 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("🧪 Spec2Test Intelligence")
-st.caption(
-    "Transform acceptance criteria into structured, traceable QA test cases."
-)
-
-
 SAMPLE_ACCEPTANCE_CRITERIA = """1. User should be able to log in with valid username and password.
 2. System should not allow login with invalid credentials.
 3. Error message should be shown when required fields are blank.
 4. Given the user is on the password reset page when the user enters a registered email then the reset link should be sent successfully.
 """
+
+
+def initialize_session_state() -> None:
+    defaults: dict[str, Any] = {
+        "acceptance_criteria": "",
+        "load_sample": False,
+        "generated_test_cases": [],
+        "parsed_acceptance_criteria": [],
+        "has_generated": False,
+    }
+
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+def handle_sample_toggle() -> None:
+    if st.session_state.load_sample:
+        st.session_state.acceptance_criteria = SAMPLE_ACCEPTANCE_CRITERIA
+    else:
+        st.session_state.acceptance_criteria = ""
 
 
 def create_excel_file(dataframe: pd.DataFrame) -> io.BytesIO:
@@ -67,103 +83,108 @@ def create_excel_file(dataframe: pd.DataFrame) -> io.BytesIO:
     return excel_buffer
 
 
-def display_test_case_card(test_case, include_preconditions: bool) -> None:
-    scenario_type = test_case.scenario_type
-    priority = test_case.priority
-
-    st.markdown(
-        f"""
-        <div style="
-            border: 1px solid #d0d5dd;
-            border-radius: 12px;
-            padding: 18px;
-            margin-bottom: 14px;
-            background-color: #ffffff;
-        ">
-            <div style="
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 12px;
-            ">
-                <div>
-                    <span style="
-                        font-size: 18px;
-                        font-weight: 700;
-                    ">
-                        {test_case.test_case_id}
-                    </span>
-                    <span style="
-                        margin-left: 10px;
-                        padding: 4px 10px;
-                        border-radius: 12px;
-                        background-color: #f2f4f7;
-                        font-size: 12px;
-                    ">
-                        {scenario_type}
-                    </span>
-                </div>
-
-                <span style="
-                    padding: 4px 10px;
-                    border-radius: 12px;
-                    background-color: #f2f4f7;
-                    font-size: 12px;
-                ">
-                    Priority: {priority}
-                </span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("#### Test Scenario")
-    st.write(test_case.test_scenario)
-
-    st.markdown("#### Description")
-    st.write(test_case.test_case_description)
-
-    if include_preconditions:
-        st.markdown("#### Preconditions")
-        for precondition in test_case.preconditions:
-            st.markdown(f"- {precondition}")
-
-    st.markdown("#### Test Steps")
-
-        steps_markdown = "\n".join(
-        [f"{index}. {step}" for index, step in enumerate(test_case.test_steps, start=1)]
+def display_test_case_card(test_case: Any, include_preconditions: bool) -> None:
+    with st.container(border=True):
+        header_left, header_middle, header_right = st.columns(
+            [2, 1, 1]
         )
 
-    st.markdown(steps_markdown)
+        with header_left:
+            st.markdown(f"### {test_case.test_case_id}")
 
-    st.markdown("#### Test Data")
-    st.write(test_case.test_data or "Not specified")
+        with header_middle:
+            st.markdown(f"**Type:** {test_case.scenario_type}")
 
-    st.markdown("#### Expected Result")
-    st.write(test_case.expected_result)
+        with header_right:
+            st.markdown(f"**Priority:** {test_case.priority}")
 
-    st.markdown(
-        f"**Requirement ID:** {test_case.requirement_id}"
-    )
+        st.markdown("#### Test Scenario")
+        st.write(test_case.test_scenario)
 
-    st.divider()
+        st.markdown("#### Description")
+        st.write(test_case.test_case_description)
+
+        if include_preconditions:
+            st.markdown("#### Preconditions")
+            for index, precondition in enumerate(
+                test_case.preconditions,
+                start=1,
+            ):
+                st.write(f"{index}. {precondition}")
+
+        st.markdown("#### Test Steps")
+        for index, step in enumerate(
+            test_case.test_steps,
+            start=1,
+        ):
+            st.write(f"{index}. {step}")
+
+        st.markdown("#### Test Data")
+        st.write(test_case.test_data or "Not specified")
+
+        st.markdown("#### Expected Result")
+        st.write(test_case.expected_result)
+
+        st.markdown(
+            f"**Requirement ID:** {test_case.requirement_id}"
+        )
 
 
-load_sample = st.checkbox(
+def build_export_dataframe(
+    test_cases: list[Any],
+    include_preconditions: bool,
+) -> pd.DataFrame:
+    table_data = []
+
+    for test_case in test_cases:
+        row = {
+            "Test Case ID": test_case.test_case_id,
+            "Requirement ID": test_case.requirement_id,
+            "Scenario Type": test_case.scenario_type,
+            "Test Scenario": test_case.test_scenario,
+            "Description": test_case.test_case_description,
+            "Test Steps": "\n".join(
+                f"{index}. {step}"
+                for index, step in enumerate(
+                    test_case.test_steps,
+                    start=1,
+                )
+            ),
+            "Test Data": test_case.test_data,
+            "Expected Result": test_case.expected_result,
+            "Priority": test_case.priority,
+        }
+
+        if include_preconditions:
+            row["Preconditions"] = "\n".join(
+                f"{index}. {precondition}"
+                for index, precondition in enumerate(
+                    test_case.preconditions,
+                    start=1,
+                )
+            )
+
+        table_data.append(row)
+
+    return pd.DataFrame(table_data)
+
+
+initialize_session_state()
+
+st.title("🧪 Spec2Test Intelligence")
+st.caption(
+    "Transform acceptance criteria into structured, traceable QA test cases."
+)
+
+st.checkbox(
     "Load sample acceptance criteria",
-    value=False,
+    key="load_sample",
+    on_change=handle_sample_toggle,
 )
 
-input_value = (
-    SAMPLE_ACCEPTANCE_CRITERIA
-    if load_sample
-    else ""
-)
-
-input_text = st.text_area(
+st.text_area(
     "Acceptance Criteria",
-    value=input_value,
+    key="acceptance_criteria",
     height=220,
     placeholder=(
         "Paste acceptance criteria here.\n\n"
@@ -184,8 +205,13 @@ generate = st.button(
 )
 
 if generate:
+    input_text = st.session_state.acceptance_criteria
+
     if not input_text.strip():
         st.warning("Please enter acceptance criteria.")
+        st.session_state.generated_test_cases = []
+        st.session_state.parsed_acceptance_criteria = []
+        st.session_state.has_generated = False
 
     else:
         try:
@@ -197,144 +223,115 @@ if generate:
             parsed_items = parser.parse(normalized_items)
             test_cases = expander.generate(parsed_items)
 
-            st.success(
-                f"Generated {len(test_cases)} test cases."
-            )
-
-            summary_column_1, summary_column_2, summary_column_3 = st.columns(3)
-
-            positive_count = sum(
-                1
-                for test_case in test_cases
-                if test_case.scenario_type == "Positive"
-            )
-
-            negative_count = sum(
-                1
-                for test_case in test_cases
-                if test_case.scenario_type == "Negative"
-            )
-
-            edge_count = sum(
-                1
-                for test_case in test_cases
-                if test_case.scenario_type == "Edge"
-            )
-
-            with summary_column_1:
-                st.metric(
-                    "Positive Cases",
-                    positive_count,
-                )
-
-            with summary_column_2:
-                st.metric(
-                    "Negative Cases",
-                    negative_count,
-                )
-
-            with summary_column_3:
-                st.metric(
-                    "Edge Cases",
-                    edge_count,
-                )
-
-            st.subheader("Generated Test Cases")
-
-            scenario_filter = st.multiselect(
-                "Filter by scenario type",
-                options=["Positive", "Negative", "Edge"],
-                default=["Positive", "Negative", "Edge"],
-            )
-
-            filtered_test_cases = [
-                test_case
-                for test_case in test_cases
-                if test_case.scenario_type in scenario_filter
-            ]
-
-            if not filtered_test_cases:
-                st.info(
-                    "Select at least one scenario type to display test cases."
-                )
-
-            else:
-                for test_case in filtered_test_cases:
-                    display_test_case_card(
-                        test_case,
-                        include_preconditions,
-                    )
-
-            table_data = []
-
-            for test_case in test_cases:
-                row = {
-                    "Test Case ID": test_case.test_case_id,
-                    "Requirement ID": test_case.requirement_id,
-                    "Scenario Type": test_case.scenario_type,
-                    "Test Scenario": test_case.test_scenario,
-                    "Description": test_case.test_case_description,
-                    "Test Steps": "\n".join(
-                        f"{index}. {step}"
-                        for index, step in enumerate(
-                            test_case.test_steps,
-                            start=1,
-                        )
-                    ),
-                    "Test Data": test_case.test_data,
-                    "Expected Result": test_case.expected_result,
-                    "Priority": test_case.priority,
-                }
-
-                if include_preconditions:
-                    row["Preconditions"] = "\n".join(
-                        f"{index}. {precondition}"
-                        for index, precondition in enumerate(
-                            test_case.preconditions,
-                            start=1,
-                        )
-                    )
-
-                table_data.append(row)
-
-            dataframe = pd.DataFrame(table_data)
-
-            json_output = json.dumps(
-                [
-                    test_case.model_dump()
-                    for test_case in test_cases
-                ],
-                indent=2,
-            )
-
-            excel_output = create_excel_file(dataframe)
-
-            download_column_1, download_column_2 = st.columns(2)
-
-            with download_column_1:
-                st.download_button(
-                    label="Download JSON",
-                    data=json_output,
-                    file_name="generated_test_cases.json",
-                    mime="application/json",
-                    use_container_width=True,
-                )
-
-            with download_column_2:
-                st.download_button(
-                    label="Download Excel",
-                    data=excel_output,
-                    file_name="generated_test_cases.xlsx",
-                    mime=(
-                        "application/vnd.openxmlformats-officedocument."
-                        "spreadsheetml.sheet"
-                    ),
-                    use_container_width=True,
-                )
-
-            with st.expander("Parsed Acceptance Criteria"):
-                for item in parsed_items:
-                    st.json(item.model_dump())
+            st.session_state.generated_test_cases = test_cases
+            st.session_state.parsed_acceptance_criteria = parsed_items
+            st.session_state.has_generated = True
 
         except Exception as error:
+            st.session_state.generated_test_cases = []
+            st.session_state.parsed_acceptance_criteria = []
+            st.session_state.has_generated = False
             st.error(f"Error: {error}")
+
+if st.session_state.has_generated:
+    test_cases = st.session_state.generated_test_cases
+    parsed_items = st.session_state.parsed_acceptance_criteria
+
+    st.success(f"Generated {len(test_cases)} test cases.")
+
+    summary_column_1, summary_column_2, summary_column_3 = st.columns(3)
+
+    positive_count = sum(
+        test_case.scenario_type == "Positive"
+        for test_case in test_cases
+    )
+    negative_count = sum(
+        test_case.scenario_type == "Negative"
+        for test_case in test_cases
+    )
+    edge_count = sum(
+        test_case.scenario_type == "Edge"
+        for test_case in test_cases
+    )
+
+    with summary_column_1:
+        st.metric("Positive Cases", positive_count)
+
+    with summary_column_2:
+        st.metric("Negative Cases", negative_count)
+
+    with summary_column_3:
+        st.metric("Edge Cases", edge_count)
+
+    st.subheader("Generated Test Cases")
+
+    scenario_filter = st.multiselect(
+        "Filter by scenario type",
+        options=["Positive", "Negative", "Edge"],
+        default=["Positive", "Negative", "Edge"],
+        key="scenario_filter",
+    )
+
+    filtered_test_cases = [
+        test_case
+        for test_case in test_cases
+        if test_case.scenario_type in scenario_filter
+    ]
+
+    st.caption(
+        f"Showing {len(filtered_test_cases)} of "
+        f"{len(test_cases)} generated test cases."
+    )
+
+    if not filtered_test_cases:
+        st.info(
+            "Select at least one scenario type to display test cases."
+        )
+    else:
+        for test_case in filtered_test_cases:
+            display_test_case_card(
+                test_case,
+                include_preconditions,
+            )
+
+    dataframe = build_export_dataframe(
+        test_cases,
+        include_preconditions,
+    )
+
+    json_output = json.dumps(
+        [
+            test_case.model_dump()
+            for test_case in test_cases
+        ],
+        indent=2,
+    )
+
+    excel_output = create_excel_file(dataframe)
+
+    download_column_1, download_column_2 = st.columns(2)
+
+    with download_column_1:
+        st.download_button(
+            label="Download JSON",
+            data=json_output,
+            file_name="generated_test_cases.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+    with download_column_2:
+        st.download_button(
+            label="Download Excel",
+            data=excel_output,
+            file_name="generated_test_cases.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            use_container_width=True,
+        )
+
+    with st.expander("Parsed Acceptance Criteria"):
+        for item in parsed_items:
+            st.json(item.model_dump())

@@ -56,77 +56,123 @@ class ScenarioExpander:
             preconditions.append(f"Condition available: {criterion.condition}.")
         return preconditions
 
-    def generate_for_criterion(self, criterion: ParsedCriterion, index: int) -> List[TestCase]:
+    def generate_for_criterion(
+        self,
+        criterion: ParsedCriterion,
+        index: int,
+    ) -> List[TestCase]:
         test_cases: List[TestCase] = []
 
-        # Positive
         positive_id = f"TC-{index:03d}-P1"
+
         test_cases.append(
             TestCase(
                 test_case_id=positive_id,
                 requirement_id=criterion.id,
                 scenario_type="Positive",
-                test_scenario=self.build_title(criterion, "Positive"),
+                test_scenario=self.build_title(
+                    criterion,
+                    "Positive",
+                ),
                 test_case_description=criterion.raw_text,
                 preconditions=self.build_preconditions(criterion),
-                test_steps=self.build_steps(criterion, "Positive"),
+                test_steps=self.build_steps(
+                    criterion,
+                    "Positive",
+                ),
                 test_data="Valid input data",
-                expected_result=self.expected_builder.build(criterion, "Positive"),
-                priority="High" if criterion.rule_type in ["functional", "validation"] else "Medium",
+                expected_result=self.expected_builder.build(
+                    criterion,
+                    "Positive",
+                ),
+                priority=(
+                    "High"
+                    if criterion.rule_type in ["functional", "validation"]
+                    else "Medium"
+                ),
                 source_criterion=criterion.raw_text,
             )
         )
 
-        # Negative
         negative_id = f"TC-{index:03d}-N1"
+
         test_cases.append(
             TestCase(
                 test_case_id=negative_id,
                 requirement_id=criterion.id,
                 scenario_type="Negative",
-                test_scenario=self.build_title(criterion, "Negative"),
-                test_case_description=criterion.raw_text,
+                test_scenario=self.build_title(
+                    criterion,
+                    "Negative",
+                ),
+                test_case_description=(
+                    "System should not allow invalid input and should "
+                    "display an appropriate error message."
+                ),
                 preconditions=self.build_preconditions(criterion),
-                test_steps=self.build_steps(criterion, "Negative"),
+                test_steps=self.build_steps(
+                    criterion,
+                    "Negative",
+                ),
                 test_data="Invalid, blank, or incomplete input data",
-                expected_result=self.expected_builder.build(criterion, "Negative"),
+                expected_result=self.expected_builder.build(
+                    criterion,
+                    "Negative",
+                ),
                 priority="High",
                 source_criterion=criterion.raw_text,
             )
         )
 
-        # Edge
         edge_id = f"TC-{index:03d}-E1"
+
         test_cases.append(
             TestCase(
                 test_case_id=edge_id,
                 requirement_id=criterion.id,
                 scenario_type="Edge",
-                test_scenario=self.build_title(criterion, "Edge"),
-                test_case_description=criterion.raw_text,
+                test_scenario=self.build_title(
+                    criterion,
+                    "Edge",
+                ),
+                test_case_description=(
+                    "System should handle boundary and edge-case "
+                    "inputs correctly."
+                ),
                 preconditions=self.build_preconditions(criterion),
-                test_steps=self.build_steps(criterion, "Edge"),
-                test_data="Boundary values, nulls, blanks, special characters, min/max values",
-                expected_result=self.expected_builder.build(criterion, "Edge"),
+                test_steps=self.build_steps(
+                    criterion,
+                    "Edge",
+                ),
+                test_data=(
+                    "Boundary values, nulls, blanks, special characters, "
+                    "and minimum/maximum values"
+                ),
+                expected_result=self.expected_builder.build(
+                    criterion,
+                    "Edge",
+                ),
                 priority="Medium",
                 source_criterion=criterion.raw_text,
-                
             )
         )
 
         return test_cases
 
-    def build_action_specific_steps(
-               self,
-               criterion: ParsedCriterion,
-               scenario_type: str,
-                      ) -> List[str]:
-
-    def generate(self, parsed_criteria: List[ParsedCriterion]) -> List[TestCase]:
+    def generate(
+        self,
+        parsed_criteria: List[ParsedCriterion],
+    ) -> List[TestCase]:
         all_test_cases: List[TestCase] = []
 
-        for index, criterion in enumerate(parsed_criteria, start=1):
-            generated = self.generate_for_criterion(criterion, index)
-            all_test_cases.extend(generated)
+        for index, criterion in enumerate(
+            parsed_criteria,
+            start=1,
+        ):
+            generated_test_cases = self.generate_for_criterion(
+                criterion,
+                index,
+            )
+            all_test_cases.extend(generated_test_cases)
 
         return all_test_cases
