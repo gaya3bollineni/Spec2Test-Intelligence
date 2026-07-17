@@ -130,8 +130,12 @@ def display_test_case_card(test_case, include_preconditions: bool) -> None:
             st.markdown(f"- {precondition}")
 
     st.markdown("#### Test Steps")
-    for index, step in enumerate(test_case.test_steps, start=1):
-        st.markdown(f"{index}. {step}")
+
+        steps_markdown = "\n".join(
+        [f"{index}. {step}" for index, step in enumerate(test_case.test_steps, start=1)]
+        )
+
+    st.markdown(steps_markdown)
 
     st.markdown("#### Test Data")
     st.write(test_case.test_data or "Not specified")
