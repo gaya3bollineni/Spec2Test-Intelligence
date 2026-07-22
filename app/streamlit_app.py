@@ -9,6 +9,9 @@ from src.ingestion.normalizer import InputNormalizer
 from src.parsing.criteria_parser import CriteriaParser
 from src.requirements_analysis.analyzer import RequirementAnalyzer
 from src.scenario_expander.expander import ScenarioExpander
+from src.requirements_analysis.completeness_analyzer import (
+    CompletenessAnalyzer,
+)
 
 
 st.set_page_config(
@@ -31,6 +34,7 @@ def initialize_session_state() -> None:
         "generated_test_cases": [],
         "parsed_acceptance_criteria": [],
         "requirement_analysis": None,
+        "completeness_analysis": None,
         "has_generated": False,
     }
 
@@ -219,16 +223,20 @@ if generate:
             normalizer = InputNormalizer()
             parser = CriteriaParser()
             analyzer = RequirementAnalyzer()
+            completeness_analyzer = CompletenessAnalyzer()
             expander = ScenarioExpander()
 
             normalized_items = normalizer.normalize(input_text)
             parsed_items = parser.parse(normalized_items)
             analysis_result = analyzer.analyze(parsed_items)
+            completeness_result = completeness_analyzer.analyze(parsed_items)
             test_cases = expander.generate(parsed_items)
 
             st.session_state.generated_test_cases = test_cases
             st.session_state.parsed_acceptance_criteria = parsed_items
             st.session_state.requirement_analysis = analysis_result
+            st.session_state.requirement_analysis = analysis_result
+            st.session_state.completeness_analysis = completeness_result
             st.session_state.has_generated = True
 
         except Exception as error:
@@ -237,18 +245,20 @@ if generate:
             st.session_state.requirement_analysis = None
             st.session_state.has_generated = False
             st.error(f"Error: {error}")
+            st.session_state.completeness_analysis = None
 
 
 if st.session_state.has_generated:
     test_cases = st.session_state.generated_test_cases
     parsed_items = st.session_state.parsed_acceptance_criteria
     analysis_result = st.session_state.requirement_analysis
+    completeness_result = st.session_state.completeness_analysis
 
     st.success(f"Generated {len(test_cases)} test cases.")
 
     st.subheader("Requirement Intelligence")
 
-    analysis_column_1, analysis_column_2, analysis_column_3 = st.columns(3)
+    analysis_column_1, analysis_column_2, analysis_column_3 = st.columns(4)
 
     with analysis_column_1:
         st.metric(
@@ -268,6 +278,12 @@ if st.session_state.has_generated:
             analysis_result.ambiguous_criteria_count,
         )
 
+    with analysis_column_4:
+        st.metric(
+          "Ambiguous Criteria",
+        analysis_result.ambiguous_criteria_count,
+        )      
+
     if analysis_result.warnings:
         with st.expander("Requirement Warnings", expanded=True):
             for warning in analysis_result.warnings:
@@ -281,6 +297,31 @@ if st.session_state.has_generated:
         st.success(
             "No ambiguous wording was detected in the acceptance criteria."
         )
+  with st.expander(
+    "Requirement Completeness Details",
+    expanded=True,
+        ):
+    for criterion_result in completeness_result.criterion_results:
+        st.markdown(
+            f"### {criterion_result.criterion_id} — "
+            f"{criterion_result.completeness_score}%"
+        )
+
+        st.write(criterion_result.criterion_text)
+
+        for check in criterion_result.checks:
+            if check.is_present:
+                st.success(f"✓ {check.message}")
+            else:
+                st.warning(f"⚠ {check.message}")
+
+        if criterion_result.recommendations:
+            st.markdown("**Recommendations**")
+
+            for recommendation in criterion_result.recommendations:
+                st.write(f"- {recommendation}")
+
+        st.divider()      
 
     st.subheader("Test Case Summary")
 
