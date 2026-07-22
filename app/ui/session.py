@@ -8,6 +8,7 @@ from app.config import SAMPLE_ACCEPTANCE_CRITERIA
 SESSION_DEFAULTS: dict[str, Any] = {
     "acceptance_criteria": "",
     "load_sample": False,
+    "include_preconditions": True,
     "generated_test_cases": [],
     "parsed_acceptance_criteria": [],
     "requirement_analysis": None,
