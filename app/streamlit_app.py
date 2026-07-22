@@ -7,6 +7,7 @@ import streamlit as st
 
 from src.ingestion.normalizer import InputNormalizer
 from src.parsing.criteria_parser import CriteriaParser
+from src.requirements_analysis.analyzer import RequirementAnalyzer
 from src.scenario_expander.expander import ScenarioExpander
 
 
@@ -29,6 +30,7 @@ def initialize_session_state() -> None:
         "load_sample": False,
         "generated_test_cases": [],
         "parsed_acceptance_criteria": [],
+        "requirement_analysis": None,
         "has_generated": False,
     }
 
@@ -38,10 +40,11 @@ def initialize_session_state() -> None:
 
 
 def handle_sample_toggle() -> None:
-    if st.session_state.load_sample:
-        st.session_state.acceptance_criteria = SAMPLE_ACCEPTANCE_CRITERIA
-    else:
-        st.session_state.acceptance_criteria = ""
+    st.session_state.acceptance_criteria = (
+        SAMPLE_ACCEPTANCE_CRITERIA
+        if st.session_state.load_sample
+        else ""
+    )
 
 
 def create_excel_file(dataframe: pd.DataFrame) -> io.BytesIO:
@@ -58,15 +61,14 @@ def create_excel_file(dataframe: pd.DataFrame) -> io.BytesIO:
 
         for column_cells in worksheet.columns:
             column_letter = column_cells[0].column_letter
-            maximum_length = 0
-
-            for cell in column_cells:
-                if cell.value is not None:
-                    maximum_length = max(
-                        maximum_length,
-                        len(str(cell.value)),
-                    )
-
+            maximum_length = max(
+                (
+                    len(str(cell.value))
+                    for cell in column_cells
+                    if cell.value is not None
+                ),
+                default=0,
+            )
             worksheet.column_dimensions[column_letter].width = min(
                 maximum_length + 2,
                 50,
@@ -83,11 +85,12 @@ def create_excel_file(dataframe: pd.DataFrame) -> io.BytesIO:
     return excel_buffer
 
 
-def display_test_case_card(test_case: Any, include_preconditions: bool) -> None:
+def display_test_case_card(
+    test_case: Any,
+    include_preconditions: bool,
+) -> None:
     with st.container(border=True):
-        header_left, header_middle, header_right = st.columns(
-            [2, 1, 1]
-        )
+        header_left, header_middle, header_right = st.columns([2, 1, 1])
 
         with header_left:
             st.markdown(f"### {test_case.test_case_id}")
@@ -125,16 +128,14 @@ def display_test_case_card(test_case: Any, include_preconditions: bool) -> None:
         st.markdown("#### Expected Result")
         st.write(test_case.expected_result)
 
-        st.markdown(
-            f"**Requirement ID:** {test_case.requirement_id}"
-        )
+        st.markdown(f"**Requirement ID:** {test_case.requirement_id}")
 
 
 def build_export_dataframe(
     test_cases: list[Any],
     include_preconditions: bool,
 ) -> pd.DataFrame:
-    table_data = []
+    rows = []
 
     for test_case in test_cases:
         row = {
@@ -164,9 +165,9 @@ def build_export_dataframe(
                 )
             )
 
-        table_data.append(row)
+        rows.append(row)
 
-    return pd.DataFrame(table_data)
+    return pd.DataFrame(rows)
 
 
 initialize_session_state()
@@ -211,33 +212,77 @@ if generate:
         st.warning("Please enter acceptance criteria.")
         st.session_state.generated_test_cases = []
         st.session_state.parsed_acceptance_criteria = []
+        st.session_state.requirement_analysis = None
         st.session_state.has_generated = False
-
     else:
         try:
             normalizer = InputNormalizer()
             parser = CriteriaParser()
+            analyzer = RequirementAnalyzer()
             expander = ScenarioExpander()
 
             normalized_items = normalizer.normalize(input_text)
             parsed_items = parser.parse(normalized_items)
+            analysis_result = analyzer.analyze(parsed_items)
             test_cases = expander.generate(parsed_items)
 
             st.session_state.generated_test_cases = test_cases
             st.session_state.parsed_acceptance_criteria = parsed_items
+            st.session_state.requirement_analysis = analysis_result
             st.session_state.has_generated = True
 
         except Exception as error:
             st.session_state.generated_test_cases = []
             st.session_state.parsed_acceptance_criteria = []
+            st.session_state.requirement_analysis = None
             st.session_state.has_generated = False
             st.error(f"Error: {error}")
+
 
 if st.session_state.has_generated:
     test_cases = st.session_state.generated_test_cases
     parsed_items = st.session_state.parsed_acceptance_criteria
+    analysis_result = st.session_state.requirement_analysis
 
     st.success(f"Generated {len(test_cases)} test cases.")
+
+    st.subheader("Requirement Intelligence")
+
+    analysis_column_1, analysis_column_2, analysis_column_3 = st.columns(3)
+
+    with analysis_column_1:
+        st.metric(
+            "Acceptance Criteria",
+            analysis_result.total_criteria,
+        )
+
+    with analysis_column_2:
+        st.metric(
+            "Requirement Quality",
+            f"{analysis_result.quality_score}%",
+        )
+
+    with analysis_column_3:
+        st.metric(
+            "Ambiguous Criteria",
+            analysis_result.ambiguous_criteria_count,
+        )
+
+    if analysis_result.warnings:
+        with st.expander("Requirement Warnings", expanded=True):
+            for warning in analysis_result.warnings:
+                st.warning(
+                    f"{warning.criterion_id}: {warning.message}"
+                )
+                st.write(
+                    f"Recommendation: {warning.recommendation}"
+                )
+    else:
+        st.success(
+            "No ambiguous wording was detected in the acceptance criteria."
+        )
+
+    st.subheader("Test Case Summary")
 
     summary_column_1, summary_column_2, summary_column_3 = st.columns(3)
 
@@ -300,10 +345,7 @@ if st.session_state.has_generated:
     )
 
     json_output = json.dumps(
-        [
-            test_case.model_dump()
-            for test_case in test_cases
-        ],
+        [test_case.model_dump() for test_case in test_cases],
         indent=2,
     )
 
