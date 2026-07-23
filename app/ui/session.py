@@ -14,6 +14,7 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "requirement_analysis": None,
     "completeness_analysis": None,
     "has_generated": False,
+    "traceability_rows": [],
 }
 
 
@@ -37,6 +38,7 @@ def clear_generated_results() -> None:
     st.session_state.requirement_analysis = None
     st.session_state.completeness_analysis = None
     st.session_state.has_generated = False
+    st.session_state.traceability_rows = []
 
 
 def save_generated_results(
@@ -44,9 +46,11 @@ def save_generated_results(
     parsed_items: list[Any],
     requirement_analysis: Any,
     completeness_analysis: Any,
+    traceability_rows,
 ) -> None:
     st.session_state.generated_test_cases = test_cases
     st.session_state.parsed_acceptance_criteria = parsed_items
     st.session_state.requirement_analysis = requirement_analysis
     st.session_state.completeness_analysis = completeness_analysis
     st.session_state.has_generated = True
+    st.session_state.traceability_rows = traceability_rows

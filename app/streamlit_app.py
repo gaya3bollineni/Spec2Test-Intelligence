@@ -25,6 +25,9 @@ from app.ui.session import (
     save_generated_results,
 )
 from app.ui.testcase_cards import show_test_case_cards
+from app.ui.traceability import (
+    show_traceability_matrix,
+)
 
 
 st.set_page_config(
@@ -84,6 +87,7 @@ def generate_results() -> None:
             parsed_items,
             requirement_analysis,
             completeness_analysis,
+            traceability_rows,
         ) = generate_spec2test_results(
             acceptance_criteria
         )
@@ -93,6 +97,7 @@ def generate_results() -> None:
             parsed_items=parsed_items,
             requirement_analysis=requirement_analysis,
             completeness_analysis=completeness_analysis,
+            traceability_rows=traceability_rows,
         )
 
     except Exception as error:
@@ -113,6 +118,7 @@ def show_generated_results() -> None:
     requirement_analysis = st.session_state.requirement_analysis
     completeness_analysis = st.session_state.completeness_analysis
     include_preconditions = st.session_state.include_preconditions
+    traceability_rows = st.session_state.traceability_rows
 
     st.success(
         f"Generated {len(test_cases)} test cases."
@@ -133,6 +139,9 @@ def show_generated_results() -> None:
 
     show_test_case_summary(
         test_cases=test_cases,
+    )
+    show_traceability_matrix(
+    traceability_rows
     )
 
     st.subheader("Generated Test Cases")
