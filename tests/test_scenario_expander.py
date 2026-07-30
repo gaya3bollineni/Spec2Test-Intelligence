@@ -1,0 +1,129 @@
+from src.models.schemas import ParsedCriterion
+from src.scenario_expander.expander import (
+    ScenarioExpander,
+)
+
+
+def build_parsed_criterion(
+    requirement_id: str = "REQ-101",
+    priority: str = "High",
+) -> ParsedCriterion:
+    return ParsedCriterion(
+        id=requirement_id,
+        raw_text=(
+            "User can log in with valid credentials."
+        ),
+        actor="user",
+        action="log in",
+        condition="with valid credentials",
+        expected_outcome=(
+            "User can log in with valid credentials."
+        ),
+        rule_type="functional",
+        priority=priority,
+    )
+
+
+def test_expander_generates_three_scenario_types() -> None:
+    expander = ScenarioExpander()
+
+    criterion = build_parsed_criterion()
+
+    test_cases = expander.generate(
+        [criterion]
+    )
+
+    assert len(test_cases) == 3
+
+    assert [
+        test_case.scenario_type
+        for test_case in test_cases
+    ] == [
+        "Positive",
+        "Negative",
+        "Edge",
+    ]
+
+
+def test_expander_preserves_requirement_id() -> None:
+    expander = ScenarioExpander()
+
+    criterion = build_parsed_criterion(
+        requirement_id="REQ-999"
+    )
+
+    test_cases = expander.generate(
+        [criterion]
+    )
+
+    assert all(
+        test_case.requirement_id == "REQ-999"
+        for test_case in test_cases
+    )
+
+
+def test_expander_preserves_uploaded_priority() -> None:
+    expander = ScenarioExpander()
+
+    criterion = build_parsed_criterion(
+        priority="Critical"
+    )
+
+    test_cases = expander.generate(
+        [criterion]
+    )
+
+    assert all(
+        test_case.priority == "Critical"
+        for test_case in test_cases
+    )
+
+
+def test_expander_defaults_invalid_priority_to_medium() -> None:
+    expander = ScenarioExpander()
+
+    criterion = build_parsed_criterion(
+        priority="Urgent"
+    )
+
+    test_cases = expander.generate(
+        [criterion]
+    )
+
+    assert all(
+        test_case.priority == "Medium"
+        for test_case in test_cases
+    )
+
+
+def test_expander_generates_unique_test_case_ids() -> None:
+    expander = ScenarioExpander()
+
+    criteria = [
+        build_parsed_criterion(
+            requirement_id="REQ-101"
+        ),
+        build_parsed_criterion(
+            requirement_id="REQ-102"
+        ),
+    ]
+
+    test_cases = expander.generate(criteria)
+
+    test_case_ids = [
+        test_case.test_case_id
+        for test_case in test_cases
+    ]
+
+    assert len(test_case_ids) == len(
+        set(test_case_ids)
+    )
+
+    assert test_case_ids == [
+        "TC-001-P1",
+        "TC-001-N1",
+        "TC-001-E1",
+        "TC-002-P1",
+        "TC-002-N1",
+        "TC-002-E1",
+    ]

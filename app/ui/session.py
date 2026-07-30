@@ -7,8 +7,10 @@ from app.config import SAMPLE_ACCEPTANCE_CRITERIA
 
 SESSION_DEFAULTS: dict[str, Any] = {
     "acceptance_criteria": "",
+    "excel_requirement_records": [],
     "load_sample": False,
     "include_preconditions": True,
+    "input_method": "Enter acceptance criteria",
     "generated_test_cases": [],
     "parsed_acceptance_criteria": [],
     "requirement_analysis": None,
@@ -25,6 +27,8 @@ def initialize_session_state() -> None:
 
 
 def handle_sample_toggle() -> None:
+    st.session_state.excel_requirement_records = []
+
     st.session_state.acceptance_criteria = (
         SAMPLE_ACCEPTANCE_CRITERIA
         if st.session_state.load_sample

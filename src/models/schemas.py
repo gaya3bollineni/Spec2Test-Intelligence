@@ -1,11 +1,13 @@
-from pydantic import BaseModel, Field
 from typing import List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class RequirementItem(BaseModel):
     id: str
     raw_text: str
     normalized_text: str
+    priority: str = "Medium"
 
 
 class ParsedCriterion(BaseModel):
@@ -16,6 +18,7 @@ class ParsedCriterion(BaseModel):
     condition: Optional[str] = None
     expected_outcome: Optional[str] = None
     rule_type: str = "functional"
+    priority: str = "Medium"
 
 
 class TestCase(BaseModel):
