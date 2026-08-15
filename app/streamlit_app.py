@@ -10,11 +10,23 @@ from app.ui.dashboard import (
     show_requirement_dashboard,
     show_test_case_summary,
 )
+from app.ui.data_testing import show_data_testing
+from app.ui.requirement_panel import (
+    show_completeness_details,
+    show_conflicting_requirements,
+    show_duplicate_requirements,
+    show_parsed_acceptance_criteria,
+    show_requirement_dependencies,
+    show_requirement_warnings,
+    show_requirement_health,
+)
 from app.ui.exports import show_export_buttons
 from app.ui.filters import show_scenario_filter
 from app.ui.helpers import generate_spec2test_results
 from app.ui.requirement_panel import (
     show_completeness_details,
+    show_conflicting_requirements,
+    show_duplicate_requirements,
     show_parsed_acceptance_criteria,
     show_requirement_warnings,
 )
@@ -24,10 +36,18 @@ from app.ui.session import (
     initialize_session_state,
     save_generated_results,
 )
-from app.ui.templates import build_requirements_template
-from app.ui.testcase_cards import show_test_case_cards
-from app.ui.traceability import show_traceability_matrix
-from src.ingestion.excel_loader import ExcelRequirementLoader
+from app.ui.templates import (
+    build_requirements_template,
+)
+from app.ui.testcase_cards import (
+    show_test_case_cards,
+)
+from app.ui.traceability import (
+    show_traceability_matrix,
+)
+from src.ingestion.excel_loader import (
+    ExcelRequirementLoader,
+)
 
 
 st.set_page_config(
@@ -38,30 +58,21 @@ st.set_page_config(
 
 
 def clear_manual_input() -> None:
-    """
-    Clears Excel-specific state when manual input is selected.
-    """
-
     st.session_state.excel_requirement_records = []
 
 
 def load_excel_requirements(
     uploaded_file,
 ) -> None:
-    """
-    Loads structured requirements from Excel and stores both
-    the records and display text in Streamlit session state.
-    """
-
     try:
         loader = ExcelRequirementLoader()
 
-        requirements_dataframe = loader.load(
+        dataframe = loader.load(
             uploaded_file
         )
 
         requirement_records = loader.to_records(
-            requirements_dataframe
+            dataframe
         )
 
         st.session_state.excel_requirement_records = (
@@ -70,19 +81,19 @@ def load_excel_requirements(
 
         st.session_state.acceptance_criteria = (
             loader.to_text(
-                requirements_dataframe
+                dataframe
             )
         )
 
         st.session_state.load_sample = False
 
         st.success(
-            f"Loaded {len(requirements_dataframe)} "
-            "requirements from Excel."
+            f"Loaded {len(dataframe)} requirements "
+            "from Excel."
         )
 
         st.dataframe(
-            requirements_dataframe,
+            dataframe,
             use_container_width=True,
             hide_index=True,
         )
@@ -90,24 +101,26 @@ def load_excel_requirements(
     except ValueError as error:
         st.session_state.acceptance_criteria = ""
         st.session_state.excel_requirement_records = []
+
         clear_generated_results()
-        st.error(str(error))
+
+        st.error(
+            str(error)
+        )
 
     except Exception as error:
         st.session_state.acceptance_criteria = ""
         st.session_state.excel_requirement_records = []
+
         clear_generated_results()
 
         st.error(
-            f"Unable to process the uploaded Excel file: {error}"
+            "Unable to process the uploaded Excel file: "
+            f"{error}"
         )
 
 
 def show_manual_input() -> None:
-    """
-    Displays controls for manually entering acceptance criteria.
-    """
-
     clear_manual_input()
 
     st.checkbox(
@@ -125,14 +138,12 @@ def show_manual_input() -> None:
 
 
 def show_excel_input() -> None:
-    """
-    Displays Excel template download and requirement upload controls.
-    """
-
     st.download_button(
         label="Download Requirements Template",
         data=build_requirements_template(),
-        file_name="spec2test_requirements_template.xlsx",
+        file_name=(
+            "spec2test_requirements_template.xlsx"
+        ),
         mime=(
             "application/vnd.openxmlformats-officedocument."
             "spreadsheetml.sheet"
@@ -143,8 +154,8 @@ def show_excel_input() -> None:
         "Upload Requirements Excel",
         type=["xlsx"],
         help=(
-            "The workbook must contain an Acceptance Criteria "
-            "column. Requirement ID and Priority are optional."
+            "Acceptance Criteria is required. "
+            "Requirement ID and Priority are optional."
         ),
         key="requirements_excel_upload",
     )
@@ -156,11 +167,6 @@ def show_excel_input() -> None:
 
 
 def show_input_section() -> bool:
-    """
-    Displays the requirement input controls and returns True
-    when the Generate Test Cases button is clicked.
-    """
-
     input_method = st.radio(
         "Choose requirement input method",
         options=[
@@ -173,6 +179,7 @@ def show_input_section() -> bool:
 
     if input_method == "Enter acceptance criteria":
         show_manual_input()
+
     else:
         show_excel_input()
 
@@ -188,13 +195,11 @@ def show_input_section() -> bool:
 
 
 def generate_results() -> None:
-    """
-    Processes either manual text or structured Excel records and
-    stores the generated results in Streamlit session state.
-    """
-
     try:
-        if st.session_state.input_method == "Upload Excel file":
+        if (
+            st.session_state.input_method
+            == "Upload Excel file"
+        ):
             requirement_records = (
                 st.session_state.excel_requirement_records
             )
@@ -203,9 +208,9 @@ def generate_results() -> None:
                 clear_generated_results()
 
                 st.warning(
-                    "Please upload an Excel file containing "
-                    "valid acceptance criteria."
+                    "Please upload a valid Excel file."
                 )
+
                 return
 
             results = generate_spec2test_results(
@@ -223,26 +228,24 @@ def generate_results() -> None:
                 st.warning(
                     "Please enter acceptance criteria."
                 )
+
                 return
 
             results = generate_spec2test_results(
                 acceptance_criteria=acceptance_criteria
             )
 
-        (
-            test_cases,
-            parsed_items,
-            requirement_analysis,
-            completeness_analysis,
-            traceability_rows,
-        ) = results
 
         save_generated_results(
-            test_cases=test_cases,
-            parsed_items=parsed_items,
-            requirement_analysis=requirement_analysis,
-            completeness_analysis=completeness_analysis,
-            traceability_rows=traceability_rows,
+            test_cases=results.test_cases,
+            parsed_items=results.parsed_items,
+            requirement_analysis=results.requirement_analysis,
+            completeness_analysis=results.completeness_analysis,
+            traceability_rows=results.traceability_rows,
+            duplicate_requirements=results.duplicate_requirements,
+            conflicting_requirements=results.conflicting_requirements,
+            dependencies=results.dependencies,
+            health_scores=results.health_scores,
         )
 
     except Exception as error:
@@ -254,11 +257,6 @@ def generate_results() -> None:
 
 
 def show_generated_results() -> None:
-    """
-    Displays requirement analysis, traceability, generated test
-    cases, filters, and export controls.
-    """
-
     test_cases = (
         st.session_state.generated_test_cases
     )
@@ -266,6 +264,7 @@ def show_generated_results() -> None:
     parsed_items = (
         st.session_state.parsed_acceptance_criteria
     )
+    dependencies = st.session_state.dependencies
 
     requirement_analysis = (
         st.session_state.requirement_analysis
@@ -275,16 +274,27 @@ def show_generated_results() -> None:
         st.session_state.completeness_analysis
     )
 
-    include_preconditions = (
-        st.session_state.include_preconditions
+    duplicate_requirements = (
+        st.session_state.duplicate_requirements
+    )
+
+    conflicting_requirements = (
+        st.session_state.conflicting_requirements
     )
 
     traceability_rows = (
         st.session_state.traceability_rows
     )
 
+    include_preconditions = (
+        st.session_state.include_preconditions
+    )
+
     st.success(
         f"Generated {len(test_cases)} test cases."
+    )
+    health_scores = (
+    st.session_state.health_scores
     )
 
     show_requirement_dashboard(
@@ -293,15 +303,29 @@ def show_generated_results() -> None:
     )
 
     show_requirement_warnings(
-        requirement_analysis=requirement_analysis,
+        requirement_analysis
+    )
+
+    show_duplicate_requirements(
+        duplicate_requirements
+    )
+
+    show_conflicting_requirements(
+        conflicting_requirements
+    )
+    show_requirement_dependencies(
+        dependencies
+    )
+    show_requirement_health(
+        health_scores
     )
 
     show_completeness_details(
-        completeness_analysis=completeness_analysis,
+        completeness_analysis
     )
 
     show_test_case_summary(
-        test_cases=test_cases,
+        test_cases
     )
 
     show_traceability_matrix(
@@ -311,7 +335,7 @@ def show_generated_results() -> None:
     st.subheader(
         "Generated Test Cases"
     )
-
+    
     filtered_test_cases = show_scenario_filter(
         test_cases=test_cases,
     )
@@ -328,15 +352,12 @@ def show_generated_results() -> None:
     )
 
     show_parsed_acceptance_criteria(
-        parsed_items=parsed_items,
+        parsed_items
     )
+    
 
 
 def main() -> None:
-    """
-    Runs the Spec2Test Intelligence application.
-    """
-
     initialize_session_state()
 
     st.title(
@@ -347,15 +368,26 @@ def main() -> None:
         APP_DESCRIPTION
     )
 
-    generate_button_clicked = (
-        show_input_section()
+    requirement_tab, data_tab = st.tabs(
+        [
+            "Requirement Testing",
+            "Data Testing",
+        ]
     )
 
-    if generate_button_clicked:
-        generate_results()
+    with requirement_tab:
+        generate_clicked = (
+            show_input_section()
+        )
 
-    if st.session_state.has_generated:
-        show_generated_results()
+        if generate_clicked:
+            generate_results()
+
+        if st.session_state.has_generated:
+            show_generated_results()
+
+    with data_tab:
+        show_data_testing()
 
 
 if __name__ == "__main__":

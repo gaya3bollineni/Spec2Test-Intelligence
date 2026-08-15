@@ -4,38 +4,40 @@ from app.ui.helpers import generate_spec2test_results
 
 
 def test_manual_pipeline_generates_test_cases() -> None:
-    (
-        test_cases,
-        parsed_items,
-        requirement_analysis,
-        completeness_analysis,
-        traceability_rows,
-    ) = generate_spec2test_results(
+    result = generate_spec2test_results(
         acceptance_criteria=(
             "User can log in with valid credentials."
         )
     )
 
-    assert len(parsed_items) == 1
-    assert parsed_items[0].id == "AC-001"
-    assert parsed_items[0].priority == "Medium"
+    assert len(result.parsed_items) == 1
 
-    assert len(test_cases) == 3
+    assert result.parsed_items[0].id == "AC-001"
+    assert result.parsed_items[0].priority == "Medium"
+
+    # Manual requirements default to Medium:
+    # Positive + Negative + Edge
+    assert len(result.test_cases) == 3
 
     assert all(
         test_case.requirement_id == "AC-001"
-        for test_case in test_cases
+        for test_case in result.test_cases
     )
 
-    assert len(traceability_rows) == 1
+    assert len(result.traceability_rows) == 1
 
-    assert (
-        traceability_rows[0].requirement_id
-        == "AC-001"
-    )
+    traceability = result.traceability_rows[0]
 
-    assert requirement_analysis is not None
-    assert completeness_analysis is not None
+    assert traceability.requirement_id == "AC-001"
+    assert traceability.total_test_cases == 3
+    assert traceability.expected_test_cases == 3
+    assert traceability.coverage_percentage == 100
+
+    assert result.requirement_analysis is not None
+    assert result.completeness_analysis is not None
+
+    assert result.duplicate_requirements == []
+    assert result.conflicting_requirements == []
 
 
 def test_excel_pipeline_preserves_metadata() -> None:
@@ -49,39 +51,54 @@ def test_excel_pipeline_preserves_metadata() -> None:
         }
     ]
 
-    (
-        test_cases,
-        parsed_items,
-        _requirement_analysis,
-        _completeness_analysis,
-        traceability_rows,
-    ) = generate_spec2test_results(
+    result = generate_spec2test_results(
         requirement_records=requirement_records
     )
 
-    assert len(parsed_items) == 1
+    assert len(result.parsed_items) == 1
 
-    assert parsed_items[0].id == "REQ-101"
-    assert parsed_items[0].priority == "Critical"
+    assert result.parsed_items[0].id == "REQ-101"
+    assert (
+        result.parsed_items[0].priority
+        == "Critical"
+    )
 
-    assert len(test_cases) == 3
+    # Critical:
+    # Positive + Negative + Edge + Boundary + Security
+    assert len(result.test_cases) == 5
 
     assert all(
         test_case.requirement_id == "REQ-101"
-        for test_case in test_cases
+        for test_case in result.test_cases
     )
 
     assert all(
         test_case.priority == "Critical"
-        for test_case in test_cases
+        for test_case in result.test_cases
     )
 
-    assert len(traceability_rows) == 1
+    assert {
+        test_case.scenario_type
+        for test_case in result.test_cases
+    } == {
+        "Positive",
+        "Negative",
+        "Edge",
+        "Boundary",
+        "Security",
+    }
 
-    assert (
-        traceability_rows[0].requirement_id
-        == "REQ-101"
-    )
+    assert len(result.traceability_rows) == 1
+
+    traceability = result.traceability_rows[0]
+
+    assert traceability.requirement_id == "REQ-101"
+    assert traceability.total_test_cases == 5
+    assert traceability.expected_test_cases == 5
+    assert traceability.coverage_percentage == 100
+
+    assert result.duplicate_requirements == []
+    assert result.conflicting_requirements == []
 
 
 def test_pipeline_handles_multiple_excel_requirements() -> None:
@@ -102,29 +119,55 @@ def test_pipeline_handles_multiple_excel_requirements() -> None:
         },
     ]
 
-    (
-        test_cases,
-        parsed_items,
-        _requirement_analysis,
-        _completeness_analysis,
-        traceability_rows,
-    ) = generate_spec2test_results(
+    result = generate_spec2test_results(
         requirement_records=requirement_records
     )
 
-    assert len(parsed_items) == 2
-    assert len(test_cases) == 6
-    assert len(traceability_rows) == 2
+    assert len(result.parsed_items) == 2
+
+    # High = 4
+    # Low = 2
+    assert len(result.test_cases) == 6
+
+    assert len(result.traceability_rows) == 2
 
     requirement_ids = {
         test_case.requirement_id
-        for test_case in test_cases
+        for test_case in result.test_cases
     }
 
     assert requirement_ids == {
         "REQ-201",
         "REQ-202",
     }
+
+    high_cases = [
+        test_case
+        for test_case in result.test_cases
+        if test_case.requirement_id == "REQ-201"
+    ]
+
+    low_cases = [
+        test_case
+        for test_case in result.test_cases
+        if test_case.requirement_id == "REQ-202"
+    ]
+
+    assert len(high_cases) == 4
+    assert len(low_cases) == 2
+
+    assert all(
+        test_case.priority == "High"
+        for test_case in high_cases
+    )
+
+    assert all(
+        test_case.priority == "Low"
+        for test_case in low_cases
+    )
+
+    assert result.duplicate_requirements == []
+    assert result.conflicting_requirements == []
 
 
 def test_pipeline_rejects_empty_input() -> None:
@@ -143,3 +186,286 @@ def test_pipeline_rejects_blank_manual_input() -> None:
         generate_spec2test_results(
             acceptance_criteria="   "
         )
+
+
+def test_pipeline_detects_duplicate_requirements() -> None:
+    acceptance_criteria = """
+    1. User should be able to log in with valid credentials.
+    2. System should display an error for invalid credentials.
+    3. User should be able to log in with valid credentials.
+    """
+
+    result = generate_spec2test_results(
+        acceptance_criteria=acceptance_criteria
+    )
+
+    assert len(
+        result.duplicate_requirements
+    ) == 1
+
+    duplicate = (
+        result.duplicate_requirements[0]
+    )
+
+    assert duplicate.requirement_id == "AC-003"
+    assert duplicate.duplicate_of == "AC-001"
+
+    assert result.conflicting_requirements == []
+
+
+def test_pipeline_detects_conflicting_requirements() -> None:
+    acceptance_criteria = """
+    1. System should allow guest checkout.
+    2. System should not allow guest checkout.
+    """
+
+    result = generate_spec2test_results(
+        acceptance_criteria=acceptance_criteria
+    )
+
+    assert len(
+        result.conflicting_requirements
+    ) == 1
+
+    conflict = (
+        result.conflicting_requirements[0]
+    )
+
+    assert conflict.requirement_id == "AC-002"
+    assert conflict.conflicts_with == "AC-001"
+
+
+def test_pipeline_handles_duplicate_and_conflict_together() -> None:
+    acceptance_criteria = """
+    1. User should be able to log in with valid credentials.
+    2. User should be able to log in with valid credentials.
+    3. System should allow guest checkout.
+    4. System should not allow guest checkout.
+    """
+
+    result = generate_spec2test_results(
+        acceptance_criteria=acceptance_criteria
+    )
+
+    assert len(
+        result.duplicate_requirements
+    ) == 1
+
+    assert len(
+        result.conflicting_requirements
+    ) == 1
+
+    duplicate = (
+        result.duplicate_requirements[0]
+    )
+
+    conflict = (
+        result.conflicting_requirements[0]
+    )
+
+    assert duplicate.requirement_id == "AC-002"
+    assert duplicate.duplicate_of == "AC-001"
+
+    assert conflict.requirement_id == "AC-004"
+    assert conflict.conflicts_with == "AC-003"
+
+
+def test_pipeline_generates_traceability_for_each_requirement() -> None:
+    acceptance_criteria = """
+    1. User should be able to log in with valid credentials.
+    2. User should be able to reset password.
+    """
+
+    result = generate_spec2test_results(
+        acceptance_criteria=acceptance_criteria
+    )
+
+    assert len(
+        result.traceability_rows
+    ) == 2
+
+    first_row = (
+        result.traceability_rows[0]
+    )
+
+    second_row = (
+        result.traceability_rows[1]
+    )
+
+    assert first_row.requirement_id == "AC-001"
+    assert second_row.requirement_id == "AC-002"
+
+    assert first_row.total_test_cases == 3
+    assert second_row.total_test_cases == 3
+
+    assert first_row.expected_test_cases == 3
+    assert second_row.expected_test_cases == 3
+
+    assert first_row.coverage_percentage == 100
+    assert second_row.coverage_percentage == 100
+
+
+def test_pipeline_preserves_excel_requirement_ids_in_traceability() -> None:
+    requirement_records = [
+        {
+            "requirement_id": "BANK-001",
+            "acceptance_criteria": (
+                "Customer can submit a loan application."
+            ),
+            "priority": "High",
+        },
+        {
+            "requirement_id": "BANK-002",
+            "acceptance_criteria": (
+                "System can generate a loan decision."
+            ),
+            "priority": "Critical",
+        },
+    ]
+
+    result = generate_spec2test_results(
+        requirement_records=requirement_records
+    )
+
+    traceability_ids = {
+        row.requirement_id
+        for row in result.traceability_rows
+    }
+
+    assert traceability_ids == {
+        "BANK-001",
+        "BANK-002",
+    }
+
+    first = next(
+        row
+        for row in result.traceability_rows
+        if row.requirement_id == "BANK-001"
+    )
+
+    second = next(
+        row
+        for row in result.traceability_rows
+        if row.requirement_id == "BANK-002"
+    )
+
+    assert first.total_test_cases == 4
+    assert first.expected_test_cases == 4
+
+    assert second.total_test_cases == 5
+    assert second.expected_test_cases == 5
+
+
+def test_pipeline_detects_requirement_dependencies() -> None:
+    acceptance_criteria = """
+    1. User should log in with valid credentials.
+    2. User should view the dashboard.
+    """
+
+    result = generate_spec2test_results(
+        acceptance_criteria=acceptance_criteria
+    )
+
+    assert len(
+        result.dependencies
+    ) == 1
+
+    dependency = result.dependencies[0]
+
+    assert (
+        dependency.requirement_id
+        == "AC-002"
+    )
+
+    assert (
+        dependency.depends_on
+        == "AC-001"
+    )
+
+
+def test_pipeline_generates_health_scores() -> None:
+    result = generate_spec2test_results(
+        acceptance_criteria=(
+            "User should be able to log in "
+            "with valid credentials."
+        )
+    )
+
+    assert len(
+        result.health_scores
+    ) == 1
+
+    health = result.health_scores[0]
+
+    assert (
+        health.requirement_id
+        == "AC-001"
+    )
+
+    assert (
+        0
+        <= health.overall_score
+        <= 100
+    )
+
+    assert health.rating in {
+        "Excellent",
+        "Good",
+        "Needs Review",
+        "Poor",
+    }
+
+
+def test_risk_based_generation_by_priority() -> None:
+    requirement_records = [
+        {
+            "requirement_id": "LOW-001",
+            "acceptance_criteria": (
+                "User can view help content."
+            ),
+            "priority": "Low",
+        },
+        {
+            "requirement_id": "MED-001",
+            "acceptance_criteria": (
+                "User can update profile."
+            ),
+            "priority": "Medium",
+        },
+        {
+            "requirement_id": "HIGH-001",
+            "acceptance_criteria": (
+                "Customer can submit an application."
+            ),
+            "priority": "High",
+        },
+        {
+            "requirement_id": "CRIT-001",
+            "acceptance_criteria": (
+                "System can approve a transaction."
+            ),
+            "priority": "Critical",
+        },
+    ]
+
+    result = generate_spec2test_results(
+        requirement_records=requirement_records
+    )
+
+    counts = {}
+
+    for test_case in result.test_cases:
+        counts[
+            test_case.requirement_id
+        ] = (
+            counts.get(
+                test_case.requirement_id,
+                0,
+            )
+            + 1
+        )
+
+    assert counts["LOW-001"] == 2
+    assert counts["MED-001"] == 3
+    assert counts["HIGH-001"] == 4
+    assert counts["CRIT-001"] == 5

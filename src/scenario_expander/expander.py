@@ -1,9 +1,6 @@
 from typing import List
 
-from src.models.schemas import (
-    ParsedCriterion,
-    TestCase,
-)
+from src.models.schemas import ParsedCriterion, TestCase
 from src.oracle_builder.expected_result_builder import (
     ExpectedResultBuilder,
 )
@@ -11,46 +8,40 @@ from src.oracle_builder.expected_result_builder import (
 
 class ScenarioExpander:
     def __init__(self) -> None:
-        self.expected_builder = (
-            ExpectedResultBuilder()
-        )
+        self.expected_builder = ExpectedResultBuilder()
 
     def build_title(
         self,
         criterion: ParsedCriterion,
         scenario_type: str,
     ) -> str:
-        action = (
-            criterion.action
-            if criterion.action
-            else "perform action"
-        )
+        action = criterion.action or "perform action"
+        actor = criterion.actor or "user"
 
-        actor = (
-            criterion.actor
-            if criterion.actor
-            else "user"
-        )
-
-        if scenario_type == "Positive":
-            return (
-                f"Validate {actor} can "
-                f"{action} successfully"
-            )
-
-        if scenario_type == "Negative":
-            return (
-                f"Validate {actor} cannot "
-                f"{action} with invalid input"
-            )
-
-        if scenario_type == "Edge":
-            return (
-                "Validate boundary and edge "
+        titles = {
+            "Positive": (
+                f"Validate {actor} can {action} successfully"
+            ),
+            "Negative": (
+                f"Validate {actor} cannot {action} "
+                "with invalid input"
+            ),
+            "Edge": (
+                f"Validate edge behavior for {action}"
+            ),
+            "Boundary": (
+                f"Validate boundary values for {action}"
+            ),
+            "Security": (
+                f"Validate unauthorized or restricted "
                 f"behavior for {action}"
-            )
+            ),
+        }
 
-        return f"Validate {action}"
+        return titles.get(
+            scenario_type,
+            f"Validate {action}",
+        )
 
     def build_steps(
         self,
@@ -59,8 +50,7 @@ class ScenarioExpander:
     ) -> List[str]:
         action = (
             criterion.action
-            if criterion.action
-            else "perform the requested action"
+            or "perform the requested action"
         )
 
         steps = [
@@ -79,31 +69,44 @@ class ScenarioExpander:
                 f"Perform the action: {action}."
             )
 
-            return steps
-
-        if scenario_type == "Negative":
+        elif scenario_type == "Negative":
             steps.append(
-                "Enter invalid, incomplete, or "
-                "restricted input data."
+                "Enter invalid, incomplete, or restricted input data."
             )
 
             steps.append(
                 f"Attempt to perform the action: {action}."
             )
 
-            return steps
-
-        if scenario_type == "Edge":
+        elif scenario_type == "Edge":
             steps.append(
-                "Enter boundary, null, blank, special "
-                "character, or maximum/minimum values."
+                "Use blank, null, special-character, "
+                "or unusual input combinations."
             )
 
             steps.append(
                 f"Perform the action: {action}."
             )
 
-            return steps
+        elif scenario_type == "Boundary":
+            steps.append(
+                "Prepare minimum, maximum, just-below-minimum, "
+                "and just-above-maximum values."
+            )
+
+            steps.append(
+                f"Perform the action: {action}."
+            )
+
+        elif scenario_type == "Security":
+            steps.append(
+                "Use an unauthorized, restricted, or "
+                "insufficiently privileged user context."
+            )
+
+            steps.append(
+                f"Attempt to perform the action: {action}."
+            )
 
         return steps
 
@@ -121,22 +124,21 @@ class ScenarioExpander:
                 "available in the test context."
             )
 
-        if (
-            criterion.condition
-            and "given"
-            not in criterion.condition.lower()
-        ):
+        if criterion.condition:
             preconditions.append(
-                "Condition available: "
-                f"{criterion.condition}."
+                f"Condition available: {criterion.condition}."
             )
 
         return preconditions
 
     @staticmethod
     def resolve_priority(
-        criterion: ParsedCriterion,
+        priority: str,
     ) -> str:
+        """
+        Ensures only supported priorities reach test generation.
+        """
+
         valid_priorities = {
             "Low",
             "Medium",
@@ -144,10 +146,81 @@ class ScenarioExpander:
             "Critical",
         }
 
-        if criterion.priority in valid_priorities:
-            return criterion.priority
+        if priority in valid_priorities:
+            return priority
 
         return "Medium"
+
+    @staticmethod
+    def scenario_types_for_priority(
+        priority: str,
+    ) -> List[str]:
+        """
+        Determines test depth based on requirement priority.
+
+        Low      -> 2 cases
+        Medium   -> 3 cases
+        High     -> 4 cases
+        Critical -> 5 cases
+        """
+
+        mapping = {
+            "Low": [
+                "Positive",
+                "Negative",
+            ],
+            "Medium": [
+                "Positive",
+                "Negative",
+                "Edge",
+            ],
+            "High": [
+                "Positive",
+                "Negative",
+                "Edge",
+                "Boundary",
+            ],
+            "Critical": [
+                "Positive",
+                "Negative",
+                "Edge",
+                "Boundary",
+                "Security",
+            ],
+        }
+
+        return mapping.get(
+            priority,
+            mapping["Medium"],
+        )
+
+    @staticmethod
+    def test_data_for_type(
+        scenario_type: str,
+    ) -> str:
+        mapping = {
+            "Positive": "Valid input data",
+            "Negative": (
+                "Invalid, blank, or incomplete input data"
+            ),
+            "Edge": (
+                "Nulls, blanks, special characters, "
+                "and unusual input combinations"
+            ),
+            "Boundary": (
+                "Minimum, maximum, just-below, "
+                "and just-above boundary values"
+            ),
+            "Security": (
+                "Unauthorized user, restricted role, "
+                "or invalid authorization context"
+            ),
+        }
+
+        return mapping.get(
+            scenario_type,
+            "Applicable test data",
+        )
 
     def generate_for_criterion(
         self,
@@ -157,111 +230,61 @@ class ScenarioExpander:
         test_cases: List[TestCase] = []
 
         priority = self.resolve_priority(
-            criterion
+            criterion.priority
         )
 
-        test_cases.append(
-            TestCase(
-                test_case_id=f"TC-{index:03d}-P1",
-                requirement_id=criterion.id,
-                scenario_type="Positive",
-                test_scenario=self.build_title(
-                    criterion,
-                    "Positive",
-                ),
-                test_case_description=(
-                    criterion.raw_text
-                ),
-                preconditions=self.build_preconditions(
-                    criterion
-                ),
-                test_steps=self.build_steps(
-                    criterion,
-                    "Positive",
-                ),
-                test_data="Valid input data",
-                expected_result=(
-                    self.expected_builder.build(
-                        criterion,
-                        "Positive",
-                    )
-                ),
-                priority=priority,
-                source_criterion=criterion.raw_text,
+        scenario_types = (
+            self.scenario_types_for_priority(
+                priority
             )
         )
 
-        test_cases.append(
-            TestCase(
-                test_case_id=f"TC-{index:03d}-N1",
-                requirement_id=criterion.id,
-                scenario_type="Negative",
-                test_scenario=self.build_title(
-                    criterion,
-                    "Negative",
-                ),
-                test_case_description=(
-                    "System should not allow invalid "
-                    "input and should display an "
-                    "appropriate error message."
-                ),
-                preconditions=self.build_preconditions(
-                    criterion
-                ),
-                test_steps=self.build_steps(
-                    criterion,
-                    "Negative",
-                ),
-                test_data=(
-                    "Invalid, blank, or incomplete "
-                    "input data"
-                ),
-                expected_result=(
-                    self.expected_builder.build(
-                        criterion,
-                        "Negative",
-                    )
-                ),
-                priority=priority,
-                source_criterion=criterion.raw_text,
-            )
-        )
+        abbreviations = {
+            "Positive": "P1",
+            "Negative": "N1",
+            "Edge": "E1",
+            "Boundary": "B1",
+            "Security": "S1",
+        }
 
-        test_cases.append(
-            TestCase(
-                test_case_id=f"TC-{index:03d}-E1",
-                requirement_id=criterion.id,
-                scenario_type="Edge",
-                test_scenario=self.build_title(
-                    criterion,
-                    "Edge",
-                ),
-                test_case_description=(
-                    "System should handle boundary "
-                    "and edge-case inputs correctly."
-                ),
-                preconditions=self.build_preconditions(
-                    criterion
-                ),
-                test_steps=self.build_steps(
-                    criterion,
-                    "Edge",
-                ),
-                test_data=(
-                    "Boundary values, nulls, blanks, "
-                    "special characters, and "
-                    "minimum/maximum values"
-                ),
-                expected_result=(
-                    self.expected_builder.build(
+        for scenario_type in scenario_types:
+            test_cases.append(
+                TestCase(
+                    test_case_id=(
+                        f"TC-{index:03d}-"
+                        f"{abbreviations[scenario_type]}"
+                    ),
+                    requirement_id=criterion.id,
+                    scenario_type=scenario_type,
+                    test_scenario=self.build_title(
                         criterion,
-                        "Edge",
-                    )
-                ),
-                priority=priority,
-                source_criterion=criterion.raw_text,
+                        scenario_type,
+                    ),
+                    test_case_description=(
+                        criterion.raw_text
+                    ),
+                    preconditions=self.build_preconditions(
+                        criterion
+                    ),
+                    test_steps=self.build_steps(
+                        criterion,
+                        scenario_type,
+                    ),
+                    test_data=self.test_data_for_type(
+                        scenario_type
+                    ),
+                    expected_result=(
+                        self.expected_builder.build(
+                            criterion,
+                            scenario_type,
+                        )
+                    ),
+                    priority=priority,
+                    source_criterion=(
+                        criterion.raw_text
+                    ),
+                )
             )
-        )
 
         return test_cases
 

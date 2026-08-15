@@ -8,31 +8,47 @@ import streamlit as st
 def build_traceability_dataframe(
     traceability_rows: list[Any],
 ) -> pd.DataFrame:
-    """
-    Converts traceability rows into a display DataFrame.
-    """
 
     rows = []
 
     for row in traceability_rows:
-        row_data = asdict(row)
+        data = asdict(row)
 
         rows.append(
             {
-                "Requirement ID": row_data["requirement_id"],
-                "Acceptance Criteria": (
-                    row_data["acceptance_criteria"]
+                "Requirement ID": (
+                    data["requirement_id"]
                 ),
-                "Positive": row_data["positive_count"],
-                "Negative": row_data["negative_count"],
-                "Edge": row_data["edge_count"],
-                "Total Test Cases": (
-                    row_data["total_test_cases"]
+                "Acceptance Criteria": (
+                    data["acceptance_criteria"]
+                ),
+                "Positive": (
+                    data["positive_count"]
+                ),
+                "Negative": (
+                    data["negative_count"]
+                ),
+                "Edge": (
+                    data["edge_count"]
+                ),
+                "Boundary": (
+                    data["boundary_count"]
+                ),
+                "Security": (
+                    data["security_count"]
+                ),
+                "Generated": (
+                    data["total_test_cases"]
+                ),
+                "Expected": (
+                    data["expected_test_cases"]
                 ),
                 "Coverage": (
-                    f'{row_data["coverage_percentage"]}%'
+                    f'{data["coverage_percentage"]}%'
                 ),
-                "Status": row_data["coverage_status"],
+                "Status": (
+                    data["coverage_status"]
+                ),
             }
         )
 
@@ -42,9 +58,6 @@ def build_traceability_dataframe(
 def show_traceability_matrix(
     traceability_rows: list[Any],
 ) -> None:
-    """
-    Displays the Requirement Traceability Matrix.
-    """
 
     st.subheader(
         "Requirement Traceability Matrix"
@@ -74,14 +87,7 @@ def show_traceability_matrix(
         / len(traceability_rows)
     )
 
-    fully_covered_count = sum(
-        row.coverage_status == "Fully Covered"
-        for row in traceability_rows
-    )
-
     st.caption(
         f"Overall requirement coverage: "
-        f"{average_coverage}% | "
-        f"Fully covered requirements: "
-        f"{fully_covered_count}/{len(traceability_rows)}"
+        f"{average_coverage}%"
     )
