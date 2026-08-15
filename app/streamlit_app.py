@@ -257,22 +257,18 @@ def generate_results() -> None:
 
 
 def show_generated_results() -> None:
-    test_cases = (
-        st.session_state.generated_test_cases
-    )
+    """
+    Displays generated requirement analysis, health information,
+    traceability, test summaries, generated test cases,
+    parsed criteria, and export options.
+    """
 
-    parsed_items = (
-        st.session_state.parsed_acceptance_criteria
-    )
-    dependencies = st.session_state.dependencies
-
-    requirement_analysis = (
-        st.session_state.requirement_analysis
-    )
-
-    completeness_analysis = (
-        st.session_state.completeness_analysis
-    )
+    test_cases = st.session_state.generated_test_cases
+    parsed_items = st.session_state.parsed_acceptance_criteria
+    requirement_analysis = st.session_state.requirement_analysis
+    completeness_analysis = st.session_state.completeness_analysis
+    include_preconditions = st.session_state.include_preconditions
+    traceability_rows = st.session_state.traceability_rows
 
     duplicate_requirements = (
         st.session_state.duplicate_requirements
@@ -282,79 +278,135 @@ def show_generated_results() -> None:
         st.session_state.conflicting_requirements
     )
 
-    traceability_rows = (
-        st.session_state.traceability_rows
+    dependencies = (
+        st.session_state.dependencies
     )
 
-    include_preconditions = (
-        st.session_state.include_preconditions
+    health_scores = (
+        st.session_state.health_scores
     )
 
     st.success(
         f"Generated {len(test_cases)} test cases."
     )
-    health_scores = (
-    st.session_state.health_scores
+
+    # =========================================================
+    # REQUIREMENT ANALYSIS
+    # =========================================================
+
+    st.subheader("Requirement Analysis")
+
+    (
+        traceability_tab,
+        intelligence_tab,
+        health_tab,
+        
+    ) = st.tabs(
+        [
+            "Traceability Matrix",
+            "Requirement Intelligence",
+            "Requirement Health",
+            
+        ]
     )
 
-    show_requirement_dashboard(
-        requirement_analysis=requirement_analysis,
-        completeness_analysis=completeness_analysis,
+    with intelligence_tab:
+        show_requirement_dashboard(
+            requirement_analysis=requirement_analysis,
+            completeness_analysis=completeness_analysis,
+        )
+
+        show_requirement_warnings(
+            requirement_analysis=requirement_analysis,
+        )
+
+        show_duplicate_requirements(
+            duplicate_requirements
+        )
+
+        show_conflicting_requirements(
+            conflicting_requirements
+        )
+
+        show_requirement_dependencies(
+            dependencies
+        )
+
+        show_completeness_details(
+            completeness_analysis=completeness_analysis,
+        )
+
+    with health_tab:
+        show_requirement_health(
+            health_scores
+        )
+
+    with traceability_tab:
+        show_traceability_matrix(
+            traceability_rows
+        )
+
+    # =========================================================
+    # TEST RESULTS
+    # =========================================================
+
+    st.subheader("Test Results")
+
+    (
+        summary_tab,
+        test_cases_tab,
+        parsed_tab,
+    ) = st.tabs(
+        [
+            "Test Case Summary",
+            "Generated Test Cases",
+            "Parsed Criteria",
+        ]
     )
 
-    show_requirement_warnings(
-        requirement_analysis
-    )
+    # ---------------------------------------------------------
+    # TEST CASE SUMMARY TAB
+    # ---------------------------------------------------------
 
-    show_duplicate_requirements(
-        duplicate_requirements
-    )
+    with summary_tab:
+        show_test_case_summary(
+            test_cases=test_cases,
+        )
 
-    show_conflicting_requirements(
-        conflicting_requirements
-    )
-    show_requirement_dependencies(
-        dependencies
-    )
-    show_requirement_health(
-        health_scores
-    )
+    # ---------------------------------------------------------
+    # GENERATED TEST CASES TAB
+    # ---------------------------------------------------------
 
-    show_completeness_details(
-        completeness_analysis
-    )
+    with test_cases_tab:
+        filtered_test_cases = show_scenario_filter(
+            test_cases=test_cases,
+        )
 
-    show_test_case_summary(
-        test_cases
-    )
+        show_test_case_cards(
+            test_cases=filtered_test_cases,
+            include_preconditions=include_preconditions,
+        )
 
-    show_traceability_matrix(
-        traceability_rows
-    )
+    # ---------------------------------------------------------
+    # PARSED CRITERIA TAB
+    # ---------------------------------------------------------
 
-    st.subheader(
-        "Generated Test Cases"
-    )
-    
-    filtered_test_cases = show_scenario_filter(
-        test_cases=test_cases,
-    )
+    with parsed_tab:
+        show_parsed_acceptance_criteria(
+            parsed_items=parsed_items,
+        )
 
-    show_test_case_cards(
-        test_cases=filtered_test_cases,
-        include_preconditions=include_preconditions,
-    )
+    # =========================================================
+    # EXPORT
+    # =========================================================
+
+    st.subheader("Export Results")
 
     show_export_buttons(
         test_cases=test_cases,
         include_preconditions=include_preconditions,
         traceability_rows=traceability_rows,
     )
-
-    show_parsed_acceptance_criteria(
-        parsed_items
-    )
-    
 
 
 def main() -> None:
