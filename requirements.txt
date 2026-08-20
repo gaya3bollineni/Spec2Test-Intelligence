@@ -4,3 +4,4 @@ openpyxl
 pydantic
 pytest
 pytest-cov
+supabase

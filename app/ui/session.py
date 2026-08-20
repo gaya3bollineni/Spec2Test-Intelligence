@@ -20,12 +20,15 @@ SESSION_DEFAULTS: dict[str, Any] = {
 
     "duplicate_requirements": [],
     "conflicting_requirements": [],
-
-    "traceability_rows": [],
     "dependencies": [],
     "health_scores": [],
 
+    "traceability_rows": [],
+
     "has_generated": False,
+
+    # Privacy-safe usage tracking
+    "usage_session_counted": False,
 }
 
 
@@ -54,12 +57,12 @@ def clear_generated_results() -> None:
 
     st.session_state.duplicate_requirements = []
     st.session_state.conflicting_requirements = []
+    st.session_state.dependencies = []
+    st.session_state.health_scores = []
 
     st.session_state.traceability_rows = []
 
     st.session_state.has_generated = False
-    st.session_state.dependencies = []
-    st.session_state.health_scores = []
 
 
 def save_generated_results(
@@ -72,7 +75,6 @@ def save_generated_results(
     conflicting_requirements: list[Any],
     dependencies: list[Any],
     health_scores: list[Any],
-    
 ) -> None:
     st.session_state.generated_test_cases = test_cases
     st.session_state.parsed_acceptance_criteria = (
@@ -99,6 +101,12 @@ def save_generated_results(
         conflicting_requirements
     )
 
+    st.session_state.dependencies = (
+        dependencies
+    )
+
+    st.session_state.health_scores = (
+        health_scores
+    )
+
     st.session_state.has_generated = True
-    st.session_state.dependencies = dependencies
-    st.session_state.health_scores = health_scores

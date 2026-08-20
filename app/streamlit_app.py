@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 import streamlit as st
 
 from app.config import (
@@ -6,6 +13,7 @@ from app.config import (
     APP_ICON,
     APP_NAME,
 )
+from src.analytics.usage_counter import UsageCounter
 from app.ui.dashboard import (
     show_requirement_dashboard,
     show_test_case_summary,
@@ -246,7 +254,9 @@ def generate_results() -> None:
             conflicting_requirements=results.conflicting_requirements,
             dependencies=results.dependencies,
             health_scores=results.health_scores,
+            
         )
+        track_test_generation()
 
     except Exception as error:
         clear_generated_results()
@@ -408,9 +418,33 @@ def show_generated_results() -> None:
         traceability_rows=traceability_rows,
     )
 
+def track_session() -> None:
+    """
+    Counts one anonymous Streamlit session.
+
+    No user identity or user-entered content is stored.
+    """
+
+    if st.session_state.usage_session_counted:
+        return
+
+    counter = UsageCounter()
+    counter.increment("total_sessions")
+
+    st.session_state.usage_session_counted = True
+
+
+def track_test_generation() -> None:
+    """
+    Counts one successful test-generation event.
+    """
+
+    counter = UsageCounter()
+    counter.increment("test_generations")
 
 def main() -> None:
     initialize_session_state()
+    track_session()
 
     st.title(
         f"{APP_ICON} {APP_NAME}"
