@@ -175,6 +175,13 @@ def show_excel_input() -> None:
 
 
 def show_input_section() -> bool:
+    st.info(
+        "Public demo: Please use sample or non-sensitive requirements only. "
+        "Do not enter personal, financial, health, biometric, confidential, "
+        "or production data. Spec2Test analytics stores only anonymous "
+        "aggregate usage counts and does not store requirement text or "
+        "uploaded files."
+    )
     input_method = st.radio(
         "Choose requirement input method",
         options=[
@@ -417,30 +424,103 @@ def show_generated_results() -> None:
         include_preconditions=include_preconditions,
         traceability_rows=traceability_rows,
     )
+def detect_traffic_source() -> str:
+    """
+    Reads an optional aggregate source label from the URL.
+
+    Example:
+    ?source=github
+    ?source=hackernoon
+    """
+
+    counter = UsageCounter()
+
+    source = st.query_params.get(
+        "source",
+        "direct",
+    )
+
+    return counter.normalize_source(
+        source
+    )    
 
 def track_session() -> None:
     """
-    Counts one anonymous Streamlit session.
-
-    No user identity or user-entered content is stored.
+    Counts one anonymous Streamlit session and its
+    aggregate traffic source.
     """
 
     if st.session_state.usage_session_counted:
         return
 
     counter = UsageCounter()
-    counter.increment("total_sessions")
+
+    source = detect_traffic_source()
+
+    st.session_state.traffic_source = source
+
+    counter.increment(
+        "total_sessions"
+    )
+
+    counter.increment_source_session(
+        source
+    )
 
     st.session_state.usage_session_counted = True
 
 
 def track_test_generation() -> None:
     """
-    Counts one successful test-generation event.
+    Counts one successful test-generation event and
+    its aggregate traffic source.
     """
 
     counter = UsageCounter()
-    counter.increment("test_generations")
+
+    counter.increment(
+        "test_generations"
+    )
+
+    counter.increment_source_generation(
+        st.session_state.traffic_source
+    )
+def show_usage_metrics() -> None:
+    """
+    Displays anonymous aggregate usage metrics.
+
+    No user identity or user-entered content is stored.
+    """
+
+    counter = UsageCounter()
+
+    total_sessions = counter.get_count(
+        "total_sessions"
+    )
+
+    test_generations = counter.get_count(
+        "test_generations"
+    )
+
+    session_col, generation_col = st.columns(2)
+
+    with session_col:
+        st.metric(
+            "Sessions",
+            f"{total_sessions:,}",
+        )
+
+    with generation_col:
+        st.metric(
+            "Test Generations",
+            f"{test_generations:,}",
+        )
+
+    st.caption(
+        "Anonymous aggregate usage only. "
+        "Spec2Test does not store requirement text, uploaded files, "
+        "IP addresses, or personal information for these metrics."
+    )
 
 def main() -> None:
     initialize_session_state()
@@ -474,6 +554,10 @@ def main() -> None:
 
     with data_tab:
         show_data_testing()
+
+    st.divider()
+
+    show_usage_metrics()    
 
 
 if __name__ == "__main__":

@@ -8,18 +8,26 @@ class UsageCounter:
     """
     Privacy-safe aggregate usage counter.
 
-    Only two aggregate metrics are supported:
+    Stores only aggregate counts:
     - total_sessions
     - test_generations
+    - aggregate source session counts
+    - aggregate source generation counts
 
-    No user-entered requirement text, uploaded files,
-    IP addresses, names, emails, or other personal
-    information are stored.
+    No user identity or user-entered content is stored.
     """
 
     ALLOWED_METRICS = {
         "total_sessions",
         "test_generations",
+    }
+
+    ALLOWED_SOURCES = {
+        "github",
+        "hackernoon",
+        "linkedin",
+        "reddit",
+        "direct",
     }
 
     def __init__(self) -> None:
@@ -35,18 +43,26 @@ class UsageCounter:
             )
 
         except Exception:
-            # Analytics must never prevent Spec2Test
-            # from running.
             self.client = None
+
+    def normalize_source(
+        self,
+        source: str | None,
+    ) -> str:
+        if not source:
+            return "direct"
+
+        normalized = source.strip().lower()
+
+        if normalized in self.ALLOWED_SOURCES:
+            return normalized
+
+        return "direct"
 
     def increment(
         self,
         metric_name: str,
     ) -> None:
-        """
-        Atomically increments an approved aggregate metric.
-        """
-
         if self.client is None:
             return
 
@@ -62,18 +78,56 @@ class UsageCounter:
             ).execute()
 
         except Exception:
-            # A metrics failure should never break
-            # test generation.
+            pass
+
+    def increment_source_session(
+        self,
+        source: str | None,
+    ) -> None:
+        if self.client is None:
+            return
+
+        normalized_source = self.normalize_source(
+            source
+        )
+
+        try:
+            self.client.rpc(
+                "increment_source_session",
+                {
+                    "source": normalized_source,
+                },
+            ).execute()
+
+        except Exception:
+            pass
+
+    def increment_source_generation(
+        self,
+        source: str | None,
+    ) -> None:
+        if self.client is None:
+            return
+
+        normalized_source = self.normalize_source(
+            source
+        )
+
+        try:
+            self.client.rpc(
+                "increment_source_generation",
+                {
+                    "source": normalized_source,
+                },
+            ).execute()
+
+        except Exception:
             pass
 
     def get_count(
         self,
         metric_name: str,
     ) -> int:
-        """
-        Returns the current value of an approved metric.
-        """
-
         if self.client is None:
             return 0
 

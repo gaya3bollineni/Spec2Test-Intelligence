@@ -29,6 +29,7 @@ SESSION_DEFAULTS: dict[str, Any] = {
 
     # Privacy-safe usage tracking
     "usage_session_counted": False,
+    "traffic_source": "direct",
 }
 
 
