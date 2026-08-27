@@ -13,14 +13,37 @@ AssertionType = Literal[
     "button_enabled",
 ]
 
+InteractionType = Literal[
+    "fill",
+    "select",
+    "check",
+    "uncheck",
+    "radio",
+    "link",
+    "press",
+    "upload",
+]
 
-class AutomationAssertion(BaseModel):
+
+class AutomationAssertion(
+    BaseModel
+):
     assertion_type: AssertionType
     target: str | None = None
     expected_value: str | None = None
 
 
-class AutomationIntent(BaseModel):
+class AutomationInteraction(
+    BaseModel
+):
+    interaction_type: InteractionType
+    target: str
+    value: str | None = None
+
+
+class AutomationIntent(
+    BaseModel
+):
     fields: list[str] = Field(
         default_factory=list
     )
@@ -30,7 +53,15 @@ class AutomationIntent(BaseModel):
 
     start_url: str = "/"
 
-    assertions: list[AutomationAssertion] = Field(
+    interactions: list[
+        AutomationInteraction
+    ] = Field(
+        default_factory=list
+    )
+
+    assertions: list[
+        AutomationAssertion
+    ] = Field(
         default_factory=list
     )
 
@@ -39,9 +70,10 @@ class AutomationIntent(BaseModel):
 
 class AutomationIntentExtractor:
     """
-    Extracts conservative browser-automation intent from
-    a Spec2Test test case.
+    Extracts conservative browser automation intent
+    from one Spec2Test test case.
 
+    Extraction is scoped to the current requirement.
     Spec2Test does not inspect the application's DOM.
     """
 
@@ -74,36 +106,32 @@ class AutomationIntentExtractor:
         ),
     }
 
-    ACTION_PATTERNS = {
+    ACTION_REGEX_PATTERNS = {
         "login": (
-            "log in",
-            "login",
-            "sign in",
+            r"\b(?:log in|login|sign in)\b"
         ),
         "register": (
-            "register",
-            "sign up",
+            r"\b(?:register|sign up)\b"
         ),
         "submit": (
-            "submit",
+            r"\b(?:submit|submits)\b"
         ),
         "search": (
-            "search",
+            r"\b(?:search(?:es)? for|"
+            r"clicks?\s+(?:on\s+)?search"
+            r"(?:\s+button)?)\b"
         ),
         "save": (
-            "save",
+            r"\b(?:save|saves)\b"
         ),
         "update": (
-            "update",
+            r"\b(?:update|updates)\b"
         ),
         "delete": (
-            "delete",
-        ),
-        "upload": (
-            "upload",
+            r"\b(?:delete|deletes)\b"
         ),
         "download": (
-            "download",
+            r"\b(?:download|downloads)\b"
         ),
     }
 
@@ -118,7 +146,6 @@ class AutomationIntentExtractor:
         "save": "Save",
         "update": "Update",
         "delete": "Delete",
-        "upload": "Upload",
         "download": "Download",
     }
 
@@ -126,36 +153,59 @@ class AutomationIntentExtractor:
         self,
         test_case: TestCase,
     ) -> AutomationIntent:
-        combined_text = self._build_context(
-            test_case
+        combined_text = (
+            self._build_context(
+                test_case
+            )
         )
 
-        action_context = self._build_action_context(
-            test_case
+        action_context = (
+            self._build_action_context(
+                test_case
+            )
         )
 
         fields = self._extract_fields(
             combined_text
         )
 
-        primary_action = self._extract_action(
-            action_context
+        primary_action = (
+            self._extract_action(
+                action_context
+            )
         )
 
-        action_label = self._extract_action_label(
-            action_context
+        action_label = None
+
+        if primary_action:
+            action_label = (
+                self._extract_action_label(
+                    action_context
+                )
+            )
+
+        start_url = (
+            self._extract_start_url(
+                test_case.source_criterion
+            )
         )
 
-        start_url = self._extract_start_url(
-            test_case.source_criterion
+        interactions = (
+            self._extract_interactions(
+                test_case.source_criterion
+            )
         )
 
-        invalid_input = self._is_invalid_scenario(
-            test_case
+        invalid_input = (
+            self._is_invalid_scenario(
+                test_case
+            )
         )
 
-        assertions = self._extract_assertions(
-            test_case
+        assertions = (
+            self._extract_assertions(
+                test_case
+            )
         )
 
         return AutomationIntent(
@@ -163,6 +213,7 @@ class AutomationIntentExtractor:
             primary_action=primary_action,
             action_label=action_label,
             start_url=start_url,
+            interactions=interactions,
             assertions=assertions,
             invalid_input=invalid_input,
         )
@@ -175,7 +226,9 @@ class AutomationIntentExtractor:
             test_case.source_criterion,
             test_case.test_scenario,
             test_case.test_case_description,
-            " ".join(test_case.test_steps),
+            " ".join(
+                test_case.test_steps
+            ),
             test_case.test_data,
             test_case.expected_result,
         ]
@@ -190,13 +243,50 @@ class AutomationIntentExtractor:
         self,
         test_case: TestCase,
     ) -> str:
-        return " ".join(
+        text = " ".join(
             [
                 test_case.source_criterion,
                 test_case.test_scenario,
-                " ".join(test_case.test_steps),
+                " ".join(
+                    test_case.test_steps
+                ),
             ]
-        ).lower()
+        )
+
+        # URL paths such as /register or /search
+        # are navigation context, not user actions.
+        text = self._remove_urls(
+            text
+        )
+
+        return text.lower()
+
+    @staticmethod
+    def _remove_urls(
+        text: str,
+    ) -> str:
+        text = re.sub(
+            r"https?://\S+",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        text = re.sub(
+            r"\b(?:www\.)?"
+            r"[a-z0-9][a-z0-9.-]*"
+            r"\.[a-z]{2,}"
+            r"(?:/[^\s,]*)?",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        return re.sub(
+            r"\s+",
+            " ",
+            text,
+        ).strip()
 
     def _extract_fields(
         self,
@@ -211,7 +301,9 @@ class AutomationIntentExtractor:
                 pattern in text
                 for pattern in patterns
             ):
-                fields.append(field)
+                fields.append(
+                    field
+                )
 
         return fields
 
@@ -219,12 +311,13 @@ class AutomationIntentExtractor:
         self,
         text: str,
     ) -> str | None:
-        for action, patterns in (
-            self.ACTION_PATTERNS.items()
+        for action, pattern in (
+            self.ACTION_REGEX_PATTERNS.items()
         ):
-            if any(
-                pattern in text
-                for pattern in patterns
+            if re.search(
+                pattern,
+                text,
+                re.IGNORECASE,
             ):
                 return action
 
@@ -234,8 +327,6 @@ class AutomationIntentExtractor:
         self,
         text: str,
     ) -> str | None:
-        # Longer phrases first so "sign in" wins
-        # over any shorter overlapping phrase.
         phrases = sorted(
             self.ACTION_LABELS.keys(),
             key=len,
@@ -243,10 +334,16 @@ class AutomationIntentExtractor:
         )
 
         for phrase in phrases:
-            if phrase in text:
-                return self.ACTION_LABELS[
-                    phrase
-                ]
+            if re.search(
+                rf"\b{re.escape(phrase)}\b",
+                text,
+                re.IGNORECASE,
+            ):
+                return (
+                    self.ACTION_LABELS[
+                        phrase
+                    ]
+                )
 
         return None
 
@@ -254,7 +351,9 @@ class AutomationIntentExtractor:
         self,
         source_criterion: str,
     ) -> str:
-        text = source_criterion.strip()
+        text = (
+            source_criterion.strip()
+        )
 
         full_url_match = re.search(
             r"https?://[^\s,]+",
@@ -285,17 +384,522 @@ class AutomationIntentExtractor:
                 .rstrip(".")
             )
 
-            return f"https://{domain}"
+            return (
+                f"https://{domain}"
+            )
 
         return "/"
+
+    def _extract_interactions(
+        self,
+        text: str,
+    ) -> list[
+        AutomationInteraction
+    ]:
+        """
+        Extracts every explicit interaction from the
+        current requirement and preserves source order.
+        """
+
+        candidates: list[
+            tuple[
+                int,
+                AutomationInteraction,
+            ]
+        ] = []
+
+        candidates.extend(
+            self._find_fill_interactions(
+                text
+            )
+        )
+
+        candidates.extend(
+            self._find_upload_interactions(
+                text
+            )
+        )
+
+        candidates.extend(
+            self._find_press_interactions(
+                text
+            )
+        )
+
+        candidates.extend(
+            self._find_select_interactions(
+                text
+            )
+        )
+
+        candidates.extend(
+            self._find_uncheck_interactions(
+                text
+            )
+        )
+
+        candidates.extend(
+            self._find_checkbox_interactions(
+                text
+            )
+        )
+
+        candidates.extend(
+            self._find_radio_interactions(
+                text
+            )
+        )
+
+        candidates.extend(
+            self._find_link_interactions(
+                text
+            )
+        )
+
+        candidates.sort(
+            key=lambda item: item[0]
+        )
+
+        interactions: list[
+            AutomationInteraction
+        ] = []
+
+        seen: set[str] = set()
+
+        for _, interaction in candidates:
+            signature = (
+                interaction.model_dump_json()
+            )
+
+            if signature in seen:
+                continue
+
+            seen.add(
+                signature
+            )
+
+            interactions.append(
+                interaction
+            )
+
+        return interactions
+
+    def _find_fill_interactions(
+        self,
+        text: str,
+    ) -> list[
+        tuple[
+            int,
+            AutomationInteraction,
+        ]
+    ]:
+        results = []
+
+        pattern = re.compile(
+            r"\b(?:user\s+)?"
+            r"(?:enters?|types?|fills?)\s+"
+            r"""["']?(.+?)["']?\s+"""
+            r"(?:into|in)\s+"
+            r"(?:the\s+)?"
+            r"(.+?)"
+            r"(?=\s+(?:"
+            r"and\s+(?:user\s+)?"
+            r"(?:enters?|types?|fills?|"
+            r"selects?|chooses?|checks?|"
+            r"unchecks?|clicks?|press(?:es)?|"
+            r"uploads?)"
+            r"|then\b|when\b|given\b"
+            r")|[.,]|$)",
+            re.IGNORECASE,
+        )
+
+        for match in pattern.finditer(
+            text
+        ):
+            value = (
+                match.group(1)
+                .strip()
+                .strip("\"'")
+            )
+
+            target = self._clean_label(
+                match.group(2)
+            )
+
+            if not value or not target:
+                continue
+
+            results.append(
+                (
+                    match.start(),
+                    AutomationInteraction(
+                        interaction_type=(
+                            "fill"
+                        ),
+                        target=target,
+                        value=value,
+                    ),
+                )
+            )
+
+        return results
+
+    def _find_upload_interactions(
+        self,
+        text: str,
+    ) -> list[
+        tuple[
+            int,
+            AutomationInteraction,
+        ]
+    ]:
+        results = []
+
+        pattern = re.compile(
+            r"\buploads?\s+"
+            r"""["']?([^"'\s]+)["']?\s+"""
+            r"(?:to|into)\s+"
+            r"(?:the\s+)?"
+            r"(.+?)"
+            r"(?=\s+(?:and\s+|then\b|"
+            r"when\b|given\b)|[.,]|$)",
+            re.IGNORECASE,
+        )
+
+        for match in pattern.finditer(
+            text
+        ):
+            file_name = (
+                match.group(1)
+                .strip()
+            )
+
+            target = self._clean_label(
+                match.group(2)
+            )
+
+            results.append(
+                (
+                    match.start(),
+                    AutomationInteraction(
+                        interaction_type=(
+                            "upload"
+                        ),
+                        target=target,
+                        value=file_name,
+                    ),
+                )
+            )
+
+        return results
+
+    def _find_press_interactions(
+        self,
+        text: str,
+    ) -> list[
+        tuple[
+            int,
+            AutomationInteraction,
+        ]
+    ]:
+        results = []
+
+        pattern = re.compile(
+            r"\bpress(?:es)?\s+"
+            r"(Enter|Tab|Escape|ArrowDown|"
+            r"ArrowUp|ArrowLeft|ArrowRight|"
+            r"Space)\s+"
+            r"(?:in|on)\s+"
+            r"(?:the\s+)?"
+            r"(.+?)"
+            r"(?=\s+(?:and\s+|then\b|"
+            r"when\b|given\b)|[.,]|$)",
+            re.IGNORECASE,
+        )
+
+        for match in pattern.finditer(
+            text
+        ):
+            results.append(
+                (
+                    match.start(),
+                    AutomationInteraction(
+                        interaction_type=(
+                            "press"
+                        ),
+                        target=(
+                            self._clean_label(
+                                match.group(2)
+                            )
+                        ),
+                        value=(
+                            self._normalize_key(
+                                match.group(1)
+                            )
+                        ),
+                    ),
+                )
+            )
+
+        return results
+
+    def _find_select_interactions(
+        self,
+        text: str,
+    ) -> list[
+        tuple[
+            int,
+            AutomationInteraction,
+        ]
+    ]:
+        results = []
+
+        pattern = re.compile(
+            r"\bselects?\s+"
+            r"(.+?)\s+from\s+"
+            r"(?:the\s+)?"
+            r"(.+?)"
+            r"(?=\s+(?:and\s+|then\b|"
+            r"when\b|given\b)|[.,]|$)",
+            re.IGNORECASE,
+        )
+
+        for match in pattern.finditer(
+            text
+        ):
+            results.append(
+                (
+                    match.start(),
+                    AutomationInteraction(
+                        interaction_type=(
+                            "select"
+                        ),
+                        target=(
+                            self._clean_label(
+                                match.group(2)
+                            )
+                        ),
+                        value=(
+                            match.group(1)
+                            .strip()
+                        ),
+                    ),
+                )
+            )
+
+        return results
+
+    def _find_uncheck_interactions(
+        self,
+        text: str,
+    ) -> list[
+        tuple[
+            int,
+            AutomationInteraction,
+        ]
+    ]:
+        results = []
+
+        pattern = re.compile(
+            r"\bunchecks?\s+"
+            r"(?:the\s+)?"
+            r"(.+?)"
+            r"(?=\s+(?:and\s+|then\b|"
+            r"when\b|given\b)|[.,]|$)",
+            re.IGNORECASE,
+        )
+
+        for match in pattern.finditer(
+            text
+        ):
+            results.append(
+                (
+                    match.start(),
+                    AutomationInteraction(
+                        interaction_type=(
+                            "uncheck"
+                        ),
+                        target=(
+                            self._clean_label(
+                                match.group(1)
+                            )
+                        ),
+                    ),
+                )
+            )
+
+        return results
+
+    def _find_checkbox_interactions(
+        self,
+        text: str,
+    ) -> list[
+        tuple[
+            int,
+            AutomationInteraction,
+        ]
+    ]:
+        results = []
+
+        pattern = re.compile(
+            r"\bchecks?\s+"
+            r"(?:the\s+)?"
+            r"(.+?)"
+            r"(?=\s+(?:and\s+|then\b|"
+            r"when\b|given\b)|[.,]|$)",
+            re.IGNORECASE,
+        )
+
+        for match in pattern.finditer(
+            text
+        ):
+            results.append(
+                (
+                    match.start(),
+                    AutomationInteraction(
+                        interaction_type=(
+                            "check"
+                        ),
+                        target=(
+                            self._clean_label(
+                                match.group(1)
+                            )
+                        ),
+                    ),
+                )
+            )
+
+        return results
+
+    def _find_radio_interactions(
+        self,
+        text: str,
+    ) -> list[
+        tuple[
+            int,
+            AutomationInteraction,
+        ]
+    ]:
+        results = []
+
+        pattern = re.compile(
+            r"\b(?:selects?|chooses?)\s+"
+            r"(?:the\s+)?"
+            r"(.+?)\s+"
+            r"radio(?:\s+button)?"
+            r"(?=\s+(?:and\s+|then\b|"
+            r"when\b|given\b)|[.,]|$)",
+            re.IGNORECASE,
+        )
+
+        for match in pattern.finditer(
+            text
+        ):
+            results.append(
+                (
+                    match.start(),
+                    AutomationInteraction(
+                        interaction_type=(
+                            "radio"
+                        ),
+                        target=(
+                            self._clean_label(
+                                match.group(1)
+                            )
+                        ),
+                    ),
+                )
+            )
+
+        return results
+
+    def _find_link_interactions(
+        self,
+        text: str,
+    ) -> list[
+        tuple[
+            int,
+            AutomationInteraction,
+        ]
+    ]:
+        results = []
+
+        pattern = re.compile(
+            r"\bclicks?\s+(?:on\s+)?"
+            r"(?:the\s+)?"
+            r"(.+?)\s+link"
+            r"(?=\s+(?:and\s+|then\b|"
+            r"when\b|given\b)|[.,]|$)",
+            re.IGNORECASE,
+        )
+
+        for match in pattern.finditer(
+            text
+        ):
+            results.append(
+                (
+                    match.start(),
+                    AutomationInteraction(
+                        interaction_type=(
+                            "link"
+                        ),
+                        target=(
+                            self._clean_label(
+                                match.group(1)
+                            )
+                        ),
+                    ),
+                )
+            )
+
+        return results
+
+    @staticmethod
+    def _normalize_key(
+        value: str,
+    ) -> str:
+        mapping = {
+            "enter": "Enter",
+            "tab": "Tab",
+            "escape": "Escape",
+            "arrowdown": "ArrowDown",
+            "arrowup": "ArrowUp",
+            "arrowleft": "ArrowLeft",
+            "arrowright": "ArrowRight",
+            "space": "Space",
+        }
+
+        return mapping.get(
+            value.lower(),
+            value,
+        )
+
+    @staticmethod
+    def _clean_label(
+        value: str,
+    ) -> str:
+        cleaned = re.sub(
+            r"\s+",
+            " ",
+            value,
+        ).strip(" .")
+
+        cleaned = re.sub(
+            r"\s+(?:field|textbox|input|"
+            r"dropdown|list|checkbox)$",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        return cleaned.title()
 
     def _extract_assertions(
         self,
         test_case: TestCase,
-    ) -> list[AutomationAssertion]:
-        # Assertions must come from the scenario-specific
-        # expected result. We do not invent assertions from
-        # generic generated behavior.
+    ) -> list[
+        AutomationAssertion
+    ]:
         expected = (
             test_case.expected_result
             .strip()
@@ -310,7 +914,7 @@ class AutomationIntentExtractor:
             )
         )
 
-        if url_assertion is not None:
+        if url_assertion:
             return [
                 url_assertion
             ]
@@ -321,7 +925,7 @@ class AutomationIntentExtractor:
             )
         )
 
-        if field_assertion is not None:
+        if field_assertion:
             return [
                 field_assertion
             ]
@@ -332,7 +936,7 @@ class AutomationIntentExtractor:
             )
         )
 
-        if button_assertion is not None:
+        if button_assertion:
             return [
                 button_assertion
             ]
@@ -343,7 +947,7 @@ class AutomationIntentExtractor:
             )
         )
 
-        if text_assertion is not None:
+        if text_assertion:
             return [
                 text_assertion
             ]
@@ -356,8 +960,6 @@ class AutomationIntentExtractor:
     ) -> AutomationAssertion | None:
         normalized = text.lower()
 
-        # Includes a few common misspellings found in
-        # manually written acceptance criteria.
         redirect_words = (
             "redirected",
             "redirect",
@@ -374,7 +976,8 @@ class AutomationIntentExtractor:
             return None
 
         match = re.search(
-            r"(?:redirected|redirect|navigated|navigate|"
+            r"(?:redirected|redirect|"
+            r"navigated|navigate|"
             r"recirected|rediected)"
             r".*?\bto\s+(?:the\s+)?"
             r"([a-z0-9 _-]+?)\s+page\b",
@@ -387,20 +990,23 @@ class AutomationIntentExtractor:
         page_name = (
             match.group(1)
             .strip()
-            .replace(" ", "-")
+            .replace(
+                " ",
+                "-",
+            )
         )
 
         return AutomationAssertion(
             assertion_type="url",
-            expected_value=f"/{page_name}",
+            expected_value=(
+                f"/{page_name}"
+            ),
         )
 
     def _extract_visible_text_assertion(
         self,
         text: str,
     ) -> AutomationAssertion | None:
-        # Only create text assertions when the requirement
-        # gives explicit quoted text.
         quoted_match = re.search(
             r"""["']([^"']+)["']""",
             text,
@@ -424,7 +1030,9 @@ class AutomationIntentExtractor:
             return None
 
         return AutomationAssertion(
-            assertion_type="visible_text",
+            assertion_type=(
+                "visible_text"
+            ),
             expected_value=(
                 quoted_match.group(1)
             ),
@@ -450,7 +1058,9 @@ class AutomationIntentExtractor:
                 or "blank" in lower
             ):
                 return AutomationAssertion(
-                    assertion_type="field_value",
+                    assertion_type=(
+                        "field_value"
+                    ),
                     target=field,
                     expected_value="",
                 )
@@ -478,15 +1088,15 @@ class AutomationIntentExtractor:
         if not match:
             return None
 
-        button_name = (
-            match.group(1)
-            .strip()
-            .title()
-        )
-
         return AutomationAssertion(
-            assertion_type="button_enabled",
-            target=button_name,
+            assertion_type=(
+                "button_enabled"
+            ),
+            target=(
+                match.group(1)
+                .strip()
+                .title()
+            ),
         )
 
     def _is_invalid_scenario(
@@ -514,6 +1124,8 @@ class AutomationIntentExtractor:
         ).lower()
 
         return (
-            "invalid" in scenario_context
-            or "incorrect" in scenario_context
+            "invalid"
+            in scenario_context
+            or "incorrect"
+            in scenario_context
         )

@@ -173,8 +173,10 @@ class PlaywrightGenerator:
             for action in (
                 playwright_test.actions
             ):
-                rendered = self._render_action(
-                    action
+                rendered = (
+                    self._render_action(
+                        action
+                    )
                 )
 
                 if rendered:
@@ -217,9 +219,7 @@ class PlaywrightGenerator:
             lines.append("});")
             lines.append("")
 
-        return "\n".join(
-            lines
-        )
+        return "\n".join(lines)
 
     def _render_action(
         self,
@@ -259,13 +259,84 @@ class PlaywrightGenerator:
                     f".fill('{value}');"
                 )
 
+        if action.action_type == "select":
+            locator = self._render_locator(
+                action.locator
+            )
+
+            if locator:
+                value = self._escape_string(
+                    action.value or ""
+                )
+
+                return (
+                    f"await {locator}"
+                    f".selectOption('{value}');"
+                )
+
+        if action.action_type == "check":
+            locator = self._render_locator(
+                action.locator
+            )
+
+            if locator:
+                return (
+                    f"await {locator}.check();"
+                )
+
+        if action.action_type == "uncheck":
+            locator = self._render_locator(
+                action.locator
+            )
+
+            if locator:
+                return (
+                    f"await {locator}.uncheck();"
+                )
+
+        if action.action_type == "press":
+            locator = self._render_locator(
+                action.locator
+            )
+
+            if locator:
+                value = self._escape_string(
+                    action.value or ""
+                )
+
+                return (
+                    f"await {locator}"
+                    f".press('{value}');"
+                )
+
+        if (
+            action.action_type
+            == "set_input_files"
+        ):
+            locator = self._render_locator(
+                action.locator
+            )
+
+            if locator:
+                value = self._escape_string(
+                    action.value or ""
+                )
+
+                return (
+                    f"await {locator}"
+                    f".setInputFiles('{value}');"
+                )
+
         return ""
 
     def _render_assertion(
         self,
         assertion: AutomationAssertion,
     ) -> str:
-        if assertion.assertion_type == "url":
+        if (
+            assertion.assertion_type
+            == "url"
+        ):
             value = self._escape_regex(
                 assertion.expected_value
                 or ""
@@ -350,9 +421,13 @@ class PlaywrightGenerator:
                 f"page.getByLabel('{value}')"
             )
 
-        if locator.locator_type == "placeholder":
+        if (
+            locator.locator_type
+            == "placeholder"
+        ):
             return (
-                f"page.getByPlaceholder('{value}')"
+                "page.getByPlaceholder("
+                f"'{value}')"
             )
 
         if locator.locator_type == "text":
@@ -360,7 +435,10 @@ class PlaywrightGenerator:
                 f"page.getByText('{value}')"
             )
 
-        if locator.locator_type == "test_id":
+        if (
+            locator.locator_type
+            == "test_id"
+        ):
             return (
                 f"page.getByTestId('{value}')"
             )
@@ -408,9 +486,7 @@ class PlaywrightGenerator:
         if field is None:
             return None
 
-        return labels.get(
-            field
-        )
+        return labels.get(field)
 
     @staticmethod
     def _escape_string(

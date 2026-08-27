@@ -11,6 +11,7 @@ PlaywrightActionType = Literal[
     "uncheck",
     "select",
     "press",
+    "set_input_files",
     "assert_visible",
     "assert_text",
     "assert_url",

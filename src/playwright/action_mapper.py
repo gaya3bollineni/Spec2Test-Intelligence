@@ -2,6 +2,7 @@ from src.models.schemas import TestCase
 from src.playwright.intent import (
     AutomationIntent,
     AutomationIntentExtractor,
+    AutomationInteraction,
 )
 from src.playwright.models import (
     PlaywrightAction,
@@ -43,11 +44,12 @@ class PlaywrightActionMapper:
         "save": "Save",
         "update": "Update",
         "delete": "Delete",
-        "upload": "Upload",
         "download": "Download",
     }
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+    ) -> None:
         self.intent_extractor = (
             AutomationIntentExtractor()
         )
@@ -55,9 +57,13 @@ class PlaywrightActionMapper:
     def map_test_case(
         self,
         test_case: TestCase,
-    ) -> list[PlaywrightAction]:
-        intent = self.intent_extractor.extract(
-            test_case
+    ) -> list[
+        PlaywrightAction
+    ]:
+        intent = (
+            self.intent_extractor.extract(
+                test_case
+            )
         )
 
         return self.map_intent(
@@ -67,18 +73,49 @@ class PlaywrightActionMapper:
     def map_intent(
         self,
         intent: AutomationIntent,
-    ) -> list[PlaywrightAction]:
-        actions: list[PlaywrightAction] = []
+    ) -> list[
+        PlaywrightAction
+    ]:
+        actions: list[
+            PlaywrightAction
+        ] = []
 
         actions.append(
             PlaywrightAction(
                 action_type="goto",
                 value=intent.start_url,
-                description="Open application",
+                description=(
+                    "Open application"
+                ),
             )
         )
 
+        # Explicit interactions are more precise than
+        # legacy predefined field inference.
+        explicit_fill_targets = {
+            interaction.target.lower()
+            for interaction
+            in intent.interactions
+            if (
+                interaction.interaction_type
+                == "fill"
+            )
+        }
+
         for field in intent.fields:
+            label = (
+                self.FIELD_LABELS.get(
+                    field
+                )
+            )
+
+            if (
+                label
+                and label.lower()
+                in explicit_fill_targets
+            ):
+                continue
+
             field_action = (
                 self._build_field_action(
                     field=field,
@@ -88,28 +125,50 @@ class PlaywrightActionMapper:
                 )
             )
 
-            if field_action is not None:
+            if field_action:
                 actions.append(
                     field_action
+                )
+
+        # Interactions already arrive in source order.
+        for interaction in (
+            intent.interactions
+        ):
+            interaction_action = (
+                self._build_interaction_action(
+                    interaction=interaction,
+                    invalid_input=(
+                        intent.invalid_input
+                    ),
+                )
+            )
+
+            if interaction_action:
+                actions.append(
+                    interaction_action
                 )
 
         if intent.primary_action:
             primary_action = (
                 self._build_primary_action(
-                    action=intent.primary_action,
+                    action=(
+                        intent.primary_action
+                    ),
                     action_label=(
                         intent.action_label
                     ),
                 )
             )
 
-            if primary_action is not None:
+            if primary_action:
                 actions.append(
                     primary_action
                 )
 
-        return self._deduplicate_actions(
-            actions
+        return (
+            self._deduplicate_actions(
+                actions
+            )
         )
 
     def _build_field_action(
@@ -117,39 +176,235 @@ class PlaywrightActionMapper:
         field: str,
         invalid_input: bool,
     ) -> PlaywrightAction | None:
-        label = self.FIELD_LABELS.get(
-            field
+        label = (
+            self.FIELD_LABELS.get(
+                field
+            )
         )
 
         if label is None:
             return None
 
         if invalid_input:
-            value = self._invalid_value(
-                field
+            value = (
+                self._invalid_value(
+                    field
+                )
             )
         else:
-            value = self.VALID_VALUES.get(
-                field,
-                "test_value",
+            value = (
+                self.VALID_VALUES.get(
+                    field,
+                    "test_value",
+                )
             )
 
         return PlaywrightAction(
             action_type="fill",
-            locator=PlaywrightLocator(
-                locator_type="label",
-                value=label,
+            locator=(
+                PlaywrightLocator(
+                    locator_type="label",
+                    value=label,
+                )
             ),
             value=value,
             description=(
-                f"Enter value into {label}"
+                f"Enter value into "
+                f"{label}"
             ),
         )
+
+    def _build_interaction_action(
+        self,
+        interaction: (
+            AutomationInteraction
+        ),
+        invalid_input: bool,
+    ) -> PlaywrightAction | None:
+        interaction_type = (
+            interaction.interaction_type
+        )
+
+        if interaction_type == "fill":
+            value = (
+                "invalid_value"
+                if invalid_input
+                else interaction.value
+            )
+
+            return PlaywrightAction(
+                action_type="fill",
+                locator=(
+                    PlaywrightLocator(
+                        locator_type=(
+                            "label"
+                        ),
+                        value=(
+                            interaction.target
+                        ),
+                    )
+                ),
+                value=value,
+                description=(
+                    f"Enter value into "
+                    f"{interaction.target}"
+                ),
+            )
+
+        if interaction_type == "select":
+            return PlaywrightAction(
+                action_type="select",
+                locator=(
+                    PlaywrightLocator(
+                        locator_type=(
+                            "label"
+                        ),
+                        value=(
+                            interaction.target
+                        ),
+                    )
+                ),
+                value=interaction.value,
+                description=(
+                    f"Select "
+                    f"{interaction.value} "
+                    f"from "
+                    f"{interaction.target}"
+                ),
+            )
+
+        if interaction_type == "check":
+            return PlaywrightAction(
+                action_type="check",
+                locator=(
+                    PlaywrightLocator(
+                        locator_type=(
+                            "label"
+                        ),
+                        value=(
+                            interaction.target
+                        ),
+                    )
+                ),
+                description=(
+                    f"Check "
+                    f"{interaction.target}"
+                ),
+            )
+
+        if (
+            interaction_type
+            == "uncheck"
+        ):
+            return PlaywrightAction(
+                action_type="uncheck",
+                locator=(
+                    PlaywrightLocator(
+                        locator_type=(
+                            "label"
+                        ),
+                        value=(
+                            interaction.target
+                        ),
+                    )
+                ),
+                description=(
+                    f"Uncheck "
+                    f"{interaction.target}"
+                ),
+            )
+
+        if interaction_type == "radio":
+            return PlaywrightAction(
+                action_type="check",
+                locator=(
+                    PlaywrightLocator(
+                        locator_type=(
+                            "label"
+                        ),
+                        value=(
+                            interaction.target
+                        ),
+                    )
+                ),
+                description=(
+                    f"Select radio option "
+                    f"{interaction.target}"
+                ),
+            )
+
+        if interaction_type == "link":
+            return PlaywrightAction(
+                action_type="click",
+                locator=(
+                    PlaywrightLocator(
+                        locator_type="role",
+                        value="link",
+                        role_name=(
+                            interaction.target
+                        ),
+                    )
+                ),
+                description=(
+                    f"Click link "
+                    f"{interaction.target}"
+                ),
+            )
+
+        if interaction_type == "press":
+            return PlaywrightAction(
+                action_type="press",
+                locator=(
+                    PlaywrightLocator(
+                        locator_type=(
+                            "label"
+                        ),
+                        value=(
+                            interaction.target
+                        ),
+                    )
+                ),
+                value=interaction.value,
+                description=(
+                    f"Press "
+                    f"{interaction.value} "
+                    f"in "
+                    f"{interaction.target}"
+                ),
+            )
+
+        if interaction_type == "upload":
+            return PlaywrightAction(
+                action_type=(
+                    "set_input_files"
+                ),
+                locator=(
+                    PlaywrightLocator(
+                        locator_type=(
+                            "label"
+                        ),
+                        value=(
+                            interaction.target
+                        ),
+                    )
+                ),
+                value=interaction.value,
+                description=(
+                    f"Upload "
+                    f"{interaction.value} "
+                    f"to "
+                    f"{interaction.target}"
+                ),
+            )
+
+        return None
 
     def _build_primary_action(
         self,
         action: str,
-        action_label: str | None,
+        action_label: (
+            str | None
+        ),
     ) -> PlaywrightAction | None:
         label = (
             action_label
@@ -163,12 +418,16 @@ class PlaywrightActionMapper:
 
         return PlaywrightAction(
             action_type="click",
-            locator=PlaywrightLocator(
-                locator_type="role",
-                value="button",
-                role_name=label,
+            locator=(
+                PlaywrightLocator(
+                    locator_type="role",
+                    value="button",
+                    role_name=label,
+                )
             ),
-            description=f"Click {label}",
+            description=(
+                f"Click {label}"
+            ),
         )
 
     def _invalid_value(
@@ -177,7 +436,9 @@ class PlaywrightActionMapper:
     ) -> str:
         invalid_values = {
             "username": "invalid_user",
-            "password": "invalid_password",
+            "password": (
+                "invalid_password"
+            ),
             "email": "invalid-email",
             "first_name": "",
             "last_name": "",
@@ -185,15 +446,21 @@ class PlaywrightActionMapper:
             "search": "invalid_search",
         }
 
-        return invalid_values.get(
-            field,
-            "invalid_value",
+        return (
+            invalid_values.get(
+                field,
+                "invalid_value",
+            )
         )
 
     def _deduplicate_actions(
         self,
-        actions: list[PlaywrightAction],
-    ) -> list[PlaywrightAction]:
+        actions: list[
+            PlaywrightAction
+        ],
+    ) -> list[
+        PlaywrightAction
+    ]:
         unique_actions: list[
             PlaywrightAction
         ] = []

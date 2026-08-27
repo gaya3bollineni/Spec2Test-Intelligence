@@ -1,6 +1,6 @@
 from src.models.schemas import TestCase as Spec2TestCase
 from src.playwright.action_mapper import PlaywrightActionMapper
-from src.playwright.intent import AutomationIntent
+from src.playwright.intent import AutomationIntent, AutomationInteraction
 
 
 def build_test_case(
@@ -43,10 +43,7 @@ def test_maps_login_test_case() -> None:
     assert len(actions) == 4
 
     assert actions[0].action_type == "goto"
-    assert (
-        actions[0].value
-        == "https://mail.google.com"
-    )
+    assert actions[0].value == "https://mail.google.com"
 
     assert actions[1].action_type == "fill"
     assert actions[1].locator is not None
@@ -56,18 +53,12 @@ def test_maps_login_test_case() -> None:
     assert actions[2].action_type == "fill"
     assert actions[2].locator is not None
     assert actions[2].locator.value == "Password"
-    assert (
-        actions[2].value
-        == "TestPassword123!"
-    )
+    assert actions[2].value == "TestPassword123!"
 
     assert actions[3].action_type == "click"
     assert actions[3].locator is not None
     assert actions[3].locator.value == "button"
-    assert (
-        actions[3].locator.role_name
-        == "Sign in"
-    )
+    assert actions[3].locator.role_name == "Sign in"
 
 
 def test_negative_login_uses_invalid_values() -> None:
@@ -83,15 +74,8 @@ def test_negative_login_uses_invalid_values() -> None:
         test_case
     )
 
-    assert (
-        actions[1].value
-        == "invalid_user"
-    )
-
-    assert (
-        actions[2].value
-        == "invalid_password"
-    )
+    assert actions[1].value == "invalid_user"
+    assert actions[2].value == "invalid_password"
 
 
 def test_intent_generates_single_navigation() -> None:
@@ -118,11 +102,7 @@ def test_intent_generates_single_navigation() -> None:
     ]
 
     assert len(goto_actions) == 1
-
-    assert (
-        goto_actions[0].value
-        == "https://example.com"
-    )
+    assert goto_actions[0].value == "https://example.com"
 
 
 def test_sign_in_label_is_preserved() -> None:
@@ -173,3 +153,152 @@ def test_unknown_field_is_not_invented() -> None:
     ]
 
     assert fill_actions == []
+
+
+def test_maps_dropdown_interaction() -> None:
+    mapper = PlaywrightActionMapper()
+
+    intent = AutomationIntent(
+        interactions=[
+            AutomationInteraction(
+                interaction_type="select",
+                target="Country",
+                value="United States",
+            )
+        ]
+    )
+
+    actions = mapper.map_intent(
+        intent
+    )
+
+    select_actions = [
+        action
+        for action in actions
+        if action.action_type == "select"
+    ]
+
+    assert len(select_actions) == 1
+
+    action = select_actions[0]
+
+    assert action.locator is not None
+    assert action.locator.locator_type == "label"
+    assert action.locator.value == "Country"
+    assert action.value == "United States"
+
+
+def test_maps_checkbox_interaction() -> None:
+    mapper = PlaywrightActionMapper()
+
+    intent = AutomationIntent(
+        interactions=[
+            AutomationInteraction(
+                interaction_type="check",
+                target="Remember Me",
+            )
+        ]
+    )
+
+    actions = mapper.map_intent(
+        intent
+    )
+
+    check_actions = [
+        action
+        for action in actions
+        if action.action_type == "check"
+    ]
+
+    assert len(check_actions) == 1
+    assert check_actions[0].locator is not None
+    assert check_actions[0].locator.value == "Remember Me"
+
+
+def test_maps_uncheck_interaction() -> None:
+    mapper = PlaywrightActionMapper()
+
+    intent = AutomationIntent(
+        interactions=[
+            AutomationInteraction(
+                interaction_type="uncheck",
+                target="Email Notifications",
+            )
+        ]
+    )
+
+    actions = mapper.map_intent(
+        intent
+    )
+
+    uncheck_actions = [
+        action
+        for action in actions
+        if action.action_type == "uncheck"
+    ]
+
+    assert len(uncheck_actions) == 1
+    assert uncheck_actions[0].locator is not None
+    assert (
+        uncheck_actions[0].locator.value
+        == "Email Notifications"
+    )
+
+
+def test_maps_radio_interaction() -> None:
+    mapper = PlaywrightActionMapper()
+
+    intent = AutomationIntent(
+        interactions=[
+            AutomationInteraction(
+                interaction_type="radio",
+                target="Male",
+            )
+        ]
+    )
+
+    actions = mapper.map_intent(
+        intent
+    )
+
+    check_actions = [
+        action
+        for action in actions
+        if action.action_type == "check"
+    ]
+
+    assert len(check_actions) == 1
+    assert check_actions[0].locator is not None
+    assert check_actions[0].locator.value == "Male"
+
+
+def test_maps_link_interaction() -> None:
+    mapper = PlaywrightActionMapper()
+
+    intent = AutomationIntent(
+        interactions=[
+            AutomationInteraction(
+                interaction_type="link",
+                target="Forgot Password",
+            )
+        ]
+    )
+
+    actions = mapper.map_intent(
+        intent
+    )
+
+    click_actions = [
+        action
+        for action in actions
+        if action.action_type == "click"
+    ]
+
+    assert len(click_actions) == 1
+
+    locator = click_actions[0].locator
+
+    assert locator is not None
+    assert locator.locator_type == "role"
+    assert locator.value == "link"
+    assert locator.role_name == "Forgot Password"

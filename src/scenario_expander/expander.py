@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 from src.models.schemas import ParsedCriterion, TestCase
@@ -15,8 +16,11 @@ class ScenarioExpander:
         criterion: ParsedCriterion,
         scenario_type: str,
     ) -> str:
-        action = criterion.action or "perform action"
         actor = criterion.actor or "user"
+
+        action = self.normalize_action_for_title(
+            criterion.action
+        )
 
         titles = {
             "Positive": (
@@ -42,6 +46,91 @@ class ScenarioExpander:
             scenario_type,
             f"Validate {action}",
         )
+
+    @staticmethod
+    def normalize_action_for_title(
+        action: str | None,
+    ) -> str:
+        """
+        Converts conversational parser output into a cleaner
+        scenario-title action.
+
+        Example:
+        "user clicks on sign in And enters username and password"
+
+        becomes:
+        "sign in with username and password"
+        """
+
+        if not action:
+            return "perform the requested action"
+
+        cleaned = re.sub(
+            r"\s+",
+            " ",
+            action.strip(),
+        )
+
+        # Remove a repeated actor at the beginning.
+        cleaned = re.sub(
+            r"^(?:the\s+)?"
+            r"(?:user|customer|admin|agent|guest)\s+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        # Normalize common click phrasing.
+        cleaned = re.sub(
+            r"^clicks?\s+on\s+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"^clicks?\s+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        # Convert:
+        # "sign in and enters username and password"
+        # into:
+        # "sign in with username and password"
+        cleaned = re.sub(
+            r"\s+and\s+enters?\s+",
+            " with ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"\s+and\s+enter\s+",
+            " with ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        # Normalize remaining grammatical forms.
+        cleaned = re.sub(
+            r"\benters\b",
+            "enter",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"\s+",
+            " ",
+            cleaned,
+        ).strip(" .")
+
+        if not cleaned:
+            return "perform the requested action"
+
+        return cleaned.lower()
 
     def build_steps(
         self,

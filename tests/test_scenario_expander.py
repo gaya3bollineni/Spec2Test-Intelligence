@@ -285,3 +285,42 @@ def test_security_scenario_generated_for_critical_requirement() -> None:
     assert "unauthorized" in (
         security_test.test_data.lower()
     )
+
+def test_normalizes_conversational_action_for_title() -> None:
+    expander = ScenarioExpander()
+
+    result = expander.normalize_action_for_title(
+        "user clicks on sign in And enters username and password"
+    )
+
+    assert (
+        result
+        == "sign in with username and password"
+    )
+
+
+def test_generated_title_avoids_duplicate_actor_wording() -> None:
+    expander = ScenarioExpander()
+
+    criterion = build_parsed_criterion(
+        priority="Medium"
+    )
+
+    criterion.actor = "user"
+
+    criterion.action = (
+        "user clicks on sign in "
+        "And enters username and password"
+    )
+
+    test_cases = expander.generate(
+        [criterion]
+    )
+
+    assert (
+        test_cases[0].test_scenario
+        == (
+            "Validate user can sign in with "
+            "username and password successfully"
+        )
+    )    

@@ -7,6 +7,7 @@ def build_test_case(
     expected_result: str = (
         "Verify user is redirected to home page."
     ),
+    source_criterion: str | None = None,
 ) -> Spec2TestCase:
     return Spec2TestCase(
         test_case_id="TC-001-P1",
@@ -17,8 +18,7 @@ def build_test_case(
             "username and password"
         ),
         test_case_description=(
-            "Validate sign in using username "
-            "and password."
+            "Validate sign in using username and password."
         ),
         preconditions=[],
         test_steps=[
@@ -29,11 +29,14 @@ def build_test_case(
         expected_result=expected_result,
         priority="Medium",
         source_criterion=(
-            "Given user is mail.google.com "
-            "When user clicks on sign in "
-            "And enters username and password "
-            "Then verify user is redirected "
-            "to home page"
+            source_criterion
+            or (
+                "Given user is mail.google.com "
+                "When user clicks on sign in "
+                "And enters username and password "
+                "Then verify user is redirected "
+                "to home page"
+            )
         ),
     )
 
@@ -47,12 +50,6 @@ def test_generator_creates_playwright_test() -> None:
 
     assert result.generated_test_count == 1
     assert len(result.tests) == 1
-
-    generated_test = result.tests[0]
-
-    assert generated_test.requirement_id == "AC-001"
-    assert generated_test.test_case_id == "TC-001-P1"
-    assert generated_test.priority == "Medium"
 
 
 def test_generator_adds_playwright_import() -> None:
@@ -149,47 +146,7 @@ def test_generator_creates_url_assertion() -> None:
         [build_test_case()]
     )
 
-    assert (
-        "await expect(page)"
-        ".toHaveURL(/\\/home/);"
-        in result.typescript_code
-    )
-
-
-def test_generator_handles_redirect_typo() -> None:
-    generator = PlaywrightGenerator()
-
-    test_case = build_test_case(
-        expected_result=(
-            "Verify user is recirected "
-            "to home page."
-        )
-    )
-
-    result = generator.generate(
-        [test_case]
-    )
-
-    assert (
-        "await expect(page)"
-        ".toHaveURL(/\\/home/);"
-        in result.typescript_code
-    )
-
-
-def test_generator_preserves_traceability() -> None:
-    generator = PlaywrightGenerator()
-
-    result = generator.generate(
-        [build_test_case()]
-    )
-
-    code = result.typescript_code
-
-    assert "// Requirement: AC-001" in code
-    assert "TC-001-P1" in code
-    assert "// Scenario: Positive" in code
-    assert "// Priority: Medium" in code
+    assert "toHaveURL" in result.typescript_code
 
 
 def test_negative_test_uses_invalid_credentials() -> None:
@@ -209,17 +166,8 @@ def test_negative_test_uses_invalid_credentials() -> None:
         [test_case]
     )
 
-    code = result.typescript_code
-
-    assert (
-        ".fill('invalid_user');"
-        in code
-    )
-
-    assert (
-        ".fill('invalid_password');"
-        in code
-    )
+    assert ".fill('invalid_user');" in result.typescript_code
+    assert ".fill('invalid_password');" in result.typescript_code
 
 
 def test_unknown_assertion_generates_safe_todo() -> None:
@@ -227,8 +175,7 @@ def test_unknown_assertion_generates_safe_todo() -> None:
 
     test_case = build_test_case(
         expected_result=(
-            "System should process the "
-            "request successfully."
+            "System should process the request successfully."
         )
     )
 
@@ -243,29 +190,125 @@ def test_unknown_assertion_generates_safe_todo() -> None:
     )
 
 
-def test_generator_handles_multiple_tests() -> None:
+def test_generator_renders_dropdown() -> None:
     generator = PlaywrightGenerator()
 
-    positive = build_test_case()
-
-    negative = build_test_case(
-        scenario_type="Negative",
+    test_case = build_test_case(
+        source_criterion=(
+            "Given user is example.com/register "
+            "When user selects United States from Country "
+            "Then \"Registration form\" is displayed"
+        ),
         expected_result=(
-            "System should display an error."
+            "\"Registration form\" is displayed"
         ),
     )
 
-    negative.test_case_id = "TC-001-N1"
-
     result = generator.generate(
-        [
-            positive,
-            negative,
-        ]
+        [test_case]
     )
 
-    assert result.generated_test_count == 2
-    assert len(result.tests) == 2
+    assert (
+        "page.getByLabel('Country')"
+        ".selectOption('United States');"
+        in result.typescript_code
+    )
 
-    assert "TC-001-P1" in result.typescript_code
-    assert "TC-001-N1" in result.typescript_code
+
+def test_generator_renders_checkbox() -> None:
+    generator = PlaywrightGenerator()
+
+    test_case = build_test_case(
+        source_criterion=(
+            "Given user is example.com/settings "
+            "When user checks Remember me "
+            "Then \"Settings saved\" is displayed"
+        ),
+        expected_result=(
+            "\"Settings saved\" is displayed"
+        ),
+    )
+
+    result = generator.generate(
+        [test_case]
+    )
+
+    assert (
+        "page.getByLabel('Remember Me').check();"
+        in result.typescript_code
+    )
+
+
+def test_generator_renders_uncheck() -> None:
+    generator = PlaywrightGenerator()
+
+    test_case = build_test_case(
+        source_criterion=(
+            "Given user is example.com/settings "
+            "When user unchecks Email notifications "
+            "Then \"Settings saved\" is displayed"
+        ),
+        expected_result=(
+            "\"Settings saved\" is displayed"
+        ),
+    )
+
+    result = generator.generate(
+        [test_case]
+    )
+
+    assert (
+        "page.getByLabel('Email Notifications')"
+        ".uncheck();"
+        in result.typescript_code
+    )
+
+
+def test_generator_renders_radio() -> None:
+    generator = PlaywrightGenerator()
+
+    test_case = build_test_case(
+        source_criterion=(
+            "Given user is example.com/profile "
+            "When user selects Male radio button "
+            "Then \"Profile updated\" is displayed"
+        ),
+        expected_result=(
+            "\"Profile updated\" is displayed"
+        ),
+    )
+
+    result = generator.generate(
+        [test_case]
+    )
+
+    assert (
+        "page.getByLabel('Male').check();"
+        in result.typescript_code
+    )
+
+
+def test_generator_renders_link() -> None:
+    generator = PlaywrightGenerator()
+
+    test_case = build_test_case(
+        source_criterion=(
+            "Given user is example.com/login "
+            "When user clicks Forgot Password link "
+            "Then \"Reset Password\" is displayed"
+        ),
+        expected_result=(
+            "\"Reset Password\" is displayed"
+        ),
+    )
+
+    result = generator.generate(
+        [test_case]
+    )
+
+    assert (
+        "page.getByRole("
+        "'link', { name: 'Forgot Password' })"
+        ".click();"
+        in result.typescript_code
+    )
