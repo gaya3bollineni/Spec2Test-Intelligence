@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+
 import streamlit as st
 
 from app.config import (
@@ -13,29 +14,22 @@ from app.config import (
     APP_ICON,
     APP_NAME,
 )
-from src.analytics.usage_counter import UsageCounter
 from app.ui.dashboard import (
     show_requirement_dashboard,
     show_test_case_summary,
 )
 from app.ui.data_testing import show_data_testing
+from app.ui.exports import show_export_buttons
+from app.ui.filters import show_scenario_filter
+from app.ui.helpers import generate_spec2test_results
+from app.ui.playwright import show_playwright_generation
 from app.ui.requirement_panel import (
     show_completeness_details,
     show_conflicting_requirements,
     show_duplicate_requirements,
     show_parsed_acceptance_criteria,
     show_requirement_dependencies,
-    show_requirement_warnings,
     show_requirement_health,
-)
-from app.ui.exports import show_export_buttons
-from app.ui.filters import show_scenario_filter
-from app.ui.helpers import generate_spec2test_results
-from app.ui.requirement_panel import (
-    show_completeness_details,
-    show_conflicting_requirements,
-    show_duplicate_requirements,
-    show_parsed_acceptance_criteria,
     show_requirement_warnings,
 )
 from app.ui.session import (
@@ -44,18 +38,12 @@ from app.ui.session import (
     initialize_session_state,
     save_generated_results,
 )
-from app.ui.templates import (
-    build_requirements_template,
-)
-from app.ui.testcase_cards import (
-    show_test_case_cards,
-)
-from app.ui.traceability import (
-    show_traceability_matrix,
-)
-from src.ingestion.excel_loader import (
-    ExcelRequirementLoader,
-)
+from app.ui.templates import build_requirements_template
+from app.ui.testcase_cards import show_test_case_cards
+from app.ui.traceability import show_traceability_matrix
+
+from src.analytics.usage_counter import UsageCounter
+from src.ingestion.excel_loader import ExcelRequirementLoader
 
 
 st.set_page_config(
@@ -182,6 +170,7 @@ def show_input_section() -> bool:
         "aggregate usage counts and does not store requirement text or "
         "uploaded files."
     )
+
     input_method = st.radio(
         "Choose requirement input method",
         options=[
@@ -194,7 +183,6 @@ def show_input_section() -> bool:
 
     if input_method == "Enter acceptance criteria":
         show_manual_input()
-
     else:
         show_excel_input()
 
@@ -225,7 +213,6 @@ def generate_results() -> None:
                 st.warning(
                     "Please upload a valid Excel file."
                 )
-
                 return
 
             results = generate_spec2test_results(
@@ -243,13 +230,11 @@ def generate_results() -> None:
                 st.warning(
                     "Please enter acceptance criteria."
                 )
-
                 return
 
             results = generate_spec2test_results(
                 acceptance_criteria=acceptance_criteria
             )
-
 
         save_generated_results(
             test_cases=results.test_cases,
@@ -261,8 +246,8 @@ def generate_results() -> None:
             conflicting_requirements=results.conflicting_requirements,
             dependencies=results.dependencies,
             health_scores=results.health_scores,
-            
         )
+
         track_test_generation()
 
     except Exception as error:
@@ -275,17 +260,36 @@ def generate_results() -> None:
 
 def show_generated_results() -> None:
     """
-    Displays generated requirement analysis, health information,
-    traceability, test summaries, generated test cases,
-    parsed criteria, and export options.
+    Displays requirement analysis, test summaries,
+    generated test cases, parsed criteria, and exports.
+
+    Playwright automation is shown separately in its
+    own top-level application tab.
     """
 
-    test_cases = st.session_state.generated_test_cases
-    parsed_items = st.session_state.parsed_acceptance_criteria
-    requirement_analysis = st.session_state.requirement_analysis
-    completeness_analysis = st.session_state.completeness_analysis
-    include_preconditions = st.session_state.include_preconditions
-    traceability_rows = st.session_state.traceability_rows
+    test_cases = (
+        st.session_state.generated_test_cases
+    )
+
+    parsed_items = (
+        st.session_state.parsed_acceptance_criteria
+    )
+
+    requirement_analysis = (
+        st.session_state.requirement_analysis
+    )
+
+    completeness_analysis = (
+        st.session_state.completeness_analysis
+    )
+
+    include_preconditions = (
+        st.session_state.include_preconditions
+    )
+
+    traceability_rows = (
+        st.session_state.traceability_rows
+    )
 
     duplicate_requirements = (
         st.session_state.duplicate_requirements
@@ -311,21 +315,26 @@ def show_generated_results() -> None:
     # REQUIREMENT ANALYSIS
     # =========================================================
 
-    st.subheader("Requirement Analysis")
+    st.subheader(
+        "Requirement Analysis"
+    )
 
     (
         traceability_tab,
         intelligence_tab,
         health_tab,
-        
     ) = st.tabs(
         [
             "Traceability Matrix",
             "Requirement Intelligence",
             "Requirement Health",
-            
         ]
     )
+
+    with traceability_tab:
+        show_traceability_matrix(
+            traceability_rows
+        )
 
     with intelligence_tab:
         show_requirement_dashboard(
@@ -358,16 +367,13 @@ def show_generated_results() -> None:
             health_scores
         )
 
-    with traceability_tab:
-        show_traceability_matrix(
-            traceability_rows
-        )
-
     # =========================================================
     # TEST RESULTS
     # =========================================================
 
-    st.subheader("Test Results")
+    st.subheader(
+        "Test Results"
+    )
 
     (
         summary_tab,
@@ -381,32 +387,22 @@ def show_generated_results() -> None:
         ]
     )
 
-    # ---------------------------------------------------------
-    # TEST CASE SUMMARY TAB
-    # ---------------------------------------------------------
-
     with summary_tab:
         show_test_case_summary(
             test_cases=test_cases,
         )
 
-    # ---------------------------------------------------------
-    # GENERATED TEST CASES TAB
-    # ---------------------------------------------------------
-
     with test_cases_tab:
-        filtered_test_cases = show_scenario_filter(
-            test_cases=test_cases,
+        filtered_test_cases = (
+            show_scenario_filter(
+                test_cases=test_cases,
+            )
         )
 
         show_test_case_cards(
             test_cases=filtered_test_cases,
             include_preconditions=include_preconditions,
         )
-
-    # ---------------------------------------------------------
-    # PARSED CRITERIA TAB
-    # ---------------------------------------------------------
 
     with parsed_tab:
         show_parsed_acceptance_criteria(
@@ -417,18 +413,22 @@ def show_generated_results() -> None:
     # EXPORT
     # =========================================================
 
-    st.subheader("Export Results")
+    st.subheader(
+        "Export Results"
+    )
 
     show_export_buttons(
         test_cases=test_cases,
         include_preconditions=include_preconditions,
         traceability_rows=traceability_rows,
     )
+
+
 def detect_traffic_source() -> str:
     """
     Reads an optional aggregate source label from the URL.
 
-    Example:
+    Examples:
     ?source=github
     ?source=hackernoon
     """
@@ -442,7 +442,8 @@ def detect_traffic_source() -> str:
 
     return counter.normalize_source(
         source
-    )    
+    )
+
 
 def track_session() -> None:
     """
@@ -485,11 +486,11 @@ def track_test_generation() -> None:
     counter.increment_source_generation(
         st.session_state.traffic_source
     )
+
+
 def show_usage_metrics() -> None:
     """
     Displays anonymous aggregate usage metrics.
-
-    No user identity or user-entered content is stored.
     """
 
     counter = UsageCounter()
@@ -502,7 +503,17 @@ def show_usage_metrics() -> None:
         "test_generations"
     )
 
-    session_col, generation_col = st.columns(2)
+    st.subheader(
+        "Spec2Test Usage"
+    )
+
+    st.write(
+        "Spec2Test has been tried across:"
+    )
+
+    session_col, generation_col = (
+        st.columns(2)
+    )
 
     with session_col:
         st.metric(
@@ -518,12 +529,14 @@ def show_usage_metrics() -> None:
 
     st.caption(
         "Anonymous aggregate usage only. "
-        "Spec2Test does not store requirement text, uploaded files, "
-        "IP addresses, or personal information for these metrics."
+        "Spec2Test analytics does not store requirement text, "
+        "uploaded files, IP addresses, or personal information."
     )
+
 
 def main() -> None:
     initialize_session_state()
+
     track_session()
 
     st.title(
@@ -534,12 +547,21 @@ def main() -> None:
         APP_DESCRIPTION
     )
 
-    requirement_tab, data_tab = st.tabs(
+    (
+        requirement_tab,
+        data_tab,
+        playwright_tab,
+    ) = st.tabs(
         [
             "Requirement Testing",
             "Data Testing",
+            "Playwright Automation",
         ]
     )
+
+    # =========================================================
+    # REQUIREMENT TESTING
+    # =========================================================
 
     with requirement_tab:
         generate_clicked = (
@@ -552,12 +574,43 @@ def main() -> None:
         if st.session_state.has_generated:
             show_generated_results()
 
+    # =========================================================
+    # DATA TESTING
+    # =========================================================
+
     with data_tab:
         show_data_testing()
 
+    # =========================================================
+    # PLAYWRIGHT AUTOMATION
+    # =========================================================
+
+    with playwright_tab:
+        st.caption(
+            "Convert Spec2Test-generated test cases into "
+            "Playwright TypeScript automation."
+        )
+
+        if st.session_state.has_generated:
+            show_playwright_generation(
+                st.session_state.generated_test_cases
+            )
+
+        else:
+            st.info(
+                "Generate test cases in the "
+                "'Requirement Testing' tab first. "
+                "Once generated, the same test cases can be "
+                "converted into Playwright automation here."
+            )
+
+    # =========================================================
+    # USAGE
+    # =========================================================
+
     st.divider()
 
-    show_usage_metrics()    
+    show_usage_metrics()
 
 
 if __name__ == "__main__":

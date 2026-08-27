@@ -34,3 +34,7 @@ dist/
 # Temporary files
 *.tmp
 *.log
+
+# Spec2Test generated exports
+generated_test_cases.json
+generated_test_cases.xlsx

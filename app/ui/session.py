@@ -27,6 +27,9 @@ SESSION_DEFAULTS: dict[str, Any] = {
 
     "has_generated": False,
 
+    # Playwright
+    "playwright_result": None,
+
     # Privacy-safe usage tracking
     "usage_session_counted": False,
     "traffic_source": "direct",
@@ -63,6 +66,8 @@ def clear_generated_results() -> None:
 
     st.session_state.traceability_rows = []
 
+    st.session_state.playwright_result = None
+
     st.session_state.has_generated = False
 
 
@@ -77,7 +82,10 @@ def save_generated_results(
     dependencies: list[Any],
     health_scores: list[Any],
 ) -> None:
-    st.session_state.generated_test_cases = test_cases
+    st.session_state.generated_test_cases = (
+        test_cases
+    )
+
     st.session_state.parsed_acceptance_criteria = (
         parsed_items
     )
@@ -109,5 +117,9 @@ def save_generated_results(
     st.session_state.health_scores = (
         health_scores
     )
+
+    # A new requirement/test generation invalidates
+    # previously generated Playwright code.
+    st.session_state.playwright_result = None
 
     st.session_state.has_generated = True
