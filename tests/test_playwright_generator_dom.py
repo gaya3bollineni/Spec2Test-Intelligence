@@ -1,4 +1,6 @@
-from src.models.schemas import TestCase
+from src.models.schemas import (
+    TestCase as Spec2TestCase,
+)
 from src.playwright.dom_parser import DOMParser
 from src.playwright.generator import (
     PlaywrightGenerator,
@@ -7,8 +9,8 @@ from src.playwright.generator import (
 
 def build_test_case(
     source_criterion: str,
-) -> TestCase:
-    return TestCase(
+) -> Spec2TestCase:
+    return Spec2TestCase(
         requirement_id="AC-001",
         test_case_id="TC-001",
         test_scenario=(
