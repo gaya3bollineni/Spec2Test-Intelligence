@@ -8,8 +8,9 @@ def show_playwright_generation(
     test_cases: list[TestCase],
 ) -> None:
     """
-    Displays Playwright generation controls, code preview,
-    warnings, and .spec.ts download.
+    Displays Playwright generation controls,
+    generation status, warnings, code preview,
+    and .spec.ts download.
     """
 
     st.subheader("Playwright Automation")
@@ -20,10 +21,10 @@ def show_playwright_generation(
     )
 
     st.info(
-        "Generated locators are based on requirement and test-step "
-        "information. Spec2Test does not inspect the live application's "
-        "DOM, so locators and assertions should be reviewed before "
-        "running the generated automation."
+        "Locators are inferred from requirement and test-step "
+        "information. Spec2Test does not currently inspect the "
+        "application DOM, so generated locators and assertions "
+        "should be reviewed before execution."
     )
 
     if not test_cases:
@@ -36,6 +37,7 @@ def show_playwright_generation(
     if st.button(
         "Generate Playwright Test",
         key="generate_playwright",
+        width="stretch",
     ):
         generator = PlaywrightGenerator()
 
@@ -52,6 +54,14 @@ def show_playwright_generation(
     if result is None:
         return
 
+    st.divider()
+
+    st.success(
+        f"Generated {result.generated_test_count} "
+        "Playwright test"
+        f"{'' if result.generated_test_count == 1 else 's'}."
+    )
+
     metric_col, warning_col = st.columns(2)
 
     with metric_col:
@@ -67,24 +77,46 @@ def show_playwright_generation(
         )
 
     if result.warnings:
+        st.warning(
+            f"{len(result.warnings)} generated item"
+            f"{'' if len(result.warnings) == 1 else 's'} "
+            "require review before running the automation."
+        )
+
         with st.expander(
-            "Generation Warnings",
-            expanded=False,
+            "Review Generation Warnings",
+            expanded=True,
         ):
             for warning in result.warnings:
-                st.warning(warning)
+                st.markdown(
+                    f"- {warning}"
+                )
 
-    st.markdown("#### TypeScript Preview")
+    else:
+        st.success(
+            "No generation warnings were detected."
+        )
+
+    st.markdown(
+        "#### Generated TypeScript"
+    )
 
     st.code(
         result.typescript_code,
         language="typescript",
     )
 
+    st.caption(
+        "Download the generated Playwright tests as a "
+        "TypeScript spec file. Review application-specific "
+        "locators, test data, and assertions before execution."
+    )
+
     st.download_button(
-        label="Download Playwright Test (.spec.ts)",
+        label="Download Playwright .spec.ts",
         data=result.typescript_code,
         file_name="spec2test.generated.spec.ts",
         mime="text/plain",
         key="download_playwright",
+        width="stretch",
     )

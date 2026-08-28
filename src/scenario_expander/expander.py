@@ -16,7 +16,9 @@ class ScenarioExpander:
         criterion: ParsedCriterion,
         scenario_type: str,
     ) -> str:
-        actor = criterion.actor or "user"
+        actor = self.normalize_actor_for_title(
+            criterion.actor
+        )
 
         action = self.normalize_action_for_title(
             criterion.action
@@ -31,35 +33,65 @@ class ScenarioExpander:
                 "with invalid input"
             ),
             "Edge": (
-                f"Validate edge behavior for {action}"
+                f"Validate edge behavior when {actor} "
+                f"attempts to {action}"
             ),
             "Boundary": (
-                f"Validate boundary values for {action}"
+                f"Validate boundary values when {actor} "
+                f"attempts to {action}"
             ),
             "Security": (
                 f"Validate unauthorized or restricted "
-                f"behavior for {action}"
+                f"behavior when {actor} attempts to {action}"
             ),
         }
 
         return titles.get(
             scenario_type,
-            f"Validate {action}",
+            f"Validate {actor} can {action}",
         )
+
+    @staticmethod
+    def normalize_actor_for_title(
+        actor: str | None,
+    ) -> str:
+        if not actor:
+            return "user"
+
+        cleaned = re.sub(
+            r"\s+",
+            " ",
+            actor.strip(),
+        ).strip(" .")
+
+        if not cleaned:
+            return "user"
+
+        return cleaned.lower()
 
     @staticmethod
     def normalize_action_for_title(
         action: str | None,
     ) -> str:
         """
-        Converts conversational parser output into a cleaner
-        scenario-title action.
+        Converts conversational parser output into a concise,
+        readable scenario-title action.
 
-        Example:
+        Examples:
+
         "user clicks on sign in And enters username and password"
+        -> "sign in with username and password"
 
-        becomes:
-        "sign in with username and password"
+        "user enters John into First Name And user enters Smith
+        into Last Name And user enters 123 Main Street into Address"
+        -> "complete the form"
+
+        "user enters Playwright into Search And user presses Enter
+        in Search"
+        -> "search using Playwright"
+
+        "user uploads resume.pdf to Resume"
+        -> "upload resume.pdf to Resume"
         """
 
         if not action:
@@ -69,9 +101,9 @@ class ScenarioExpander:
             r"\s+",
             " ",
             action.strip(),
-        )
+        ).strip(" .")
 
-        # Remove a repeated actor at the beginning.
+        # Remove repeated actor prefixes throughout the action.
         cleaned = re.sub(
             r"^(?:the\s+)?"
             r"(?:user|customer|admin|agent|guest)\s+",
@@ -80,7 +112,115 @@ class ScenarioExpander:
             flags=re.IGNORECASE,
         )
 
-        # Normalize common click phrasing.
+        cleaned = re.sub(
+            r"\s+[Aa]nd\s+(?:the\s+)?"
+            r"(?:user|customer|admin|agent|guest)\s+",
+            " and ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        # ---------------------------------------------------------
+        # LOGIN / SIGN-IN
+        # ---------------------------------------------------------
+
+        login_match = re.match(
+            r"(?:clicks?\s+(?:on\s+)?)?"
+            r"(sign[\s-]?in|log[\s-]?in|login)"
+            r"\s+and\s+enters?\s+(.+)$",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        if login_match:
+            credentials = login_match.group(2).strip()
+
+            return (
+                f"sign in with {credentials}"
+            ).lower()
+
+        # ---------------------------------------------------------
+        # SEARCH
+        # ---------------------------------------------------------
+
+        search_match = re.search(
+            r"enters?\s+(.+?)\s+into\s+search"
+            r"(?:\s+and\s+press(?:es)?\s+enter"
+            r"(?:\s+in\s+search)?)?",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        if search_match:
+            search_value = (
+                search_match.group(1)
+                .strip(" .")
+            )
+
+            return (
+                f"search using {search_value}"
+            )
+
+        # ---------------------------------------------------------
+        # FILE UPLOAD
+        # ---------------------------------------------------------
+
+        upload_match = re.search(
+            r"uploads?\s+(.+?)\s+to\s+(.+)$",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        if upload_match:
+            file_name = (
+                upload_match.group(1)
+                .strip(" .")
+            )
+
+            target = (
+                upload_match.group(2)
+                .strip(" .")
+            )
+
+            return (
+                f"upload {file_name} to {target}"
+            )
+
+        # ---------------------------------------------------------
+        # MULTI-FIELD FORM
+        # ---------------------------------------------------------
+
+        field_entry_count = len(
+            re.findall(
+                r"\b(?:enter|enters|fill|fills|type|types)\b"
+                r".+?\b(?:into|in)\b",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+        )
+
+        has_form_interaction = bool(
+            re.search(
+                r"\b(?:select|selects|check|checks|"
+                r"uncheck|unchecks|choose|chooses)\b",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+        )
+
+        if (
+            field_entry_count >= 2
+            or (
+                field_entry_count >= 1
+                and has_form_interaction
+            )
+        ):
+            return "complete the form"
+
+        # ---------------------------------------------------------
+        # GENERAL CLEANUP
+        # ---------------------------------------------------------
+
         cleaned = re.sub(
             r"^clicks?\s+on\s+",
             "",
@@ -95,28 +235,51 @@ class ScenarioExpander:
             flags=re.IGNORECASE,
         )
 
-        # Convert:
-        # "sign in and enters username and password"
-        # into:
-        # "sign in with username and password"
         cleaned = re.sub(
-            r"\s+and\s+enters?\s+",
-            " with ",
-            cleaned,
-            flags=re.IGNORECASE,
-        )
-
-        cleaned = re.sub(
-            r"\s+and\s+enter\s+",
-            " with ",
-            cleaned,
-            flags=re.IGNORECASE,
-        )
-
-        # Normalize remaining grammatical forms.
-        cleaned = re.sub(
-            r"\benters\b",
+            r"^enters\b",
             "enter",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"^fills\b",
+            "fill",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"^selects\b",
+            "select",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"^checks\b",
+            "check",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"^unchecks\b",
+            "uncheck",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"^uploads\b",
+            "upload",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+
+        cleaned = re.sub(
+            r"^presses\b",
+            "press",
             cleaned,
             flags=re.IGNORECASE,
         )
@@ -130,7 +293,7 @@ class ScenarioExpander:
         if not cleaned:
             return "perform the requested action"
 
-        return cleaned.lower()
+        return cleaned
 
     def build_steps(
         self,

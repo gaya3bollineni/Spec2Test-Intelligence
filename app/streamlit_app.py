@@ -90,7 +90,7 @@ def load_excel_requirements(
 
         st.dataframe(
             dataframe,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 

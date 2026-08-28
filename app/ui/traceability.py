@@ -75,7 +75,7 @@ def show_traceability_matrix(
 
     st.dataframe(
         dataframe,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 

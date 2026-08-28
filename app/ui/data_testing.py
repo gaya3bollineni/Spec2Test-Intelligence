@@ -38,7 +38,7 @@ def show_data_testing() -> None:
 
     st.dataframe(
         dataframe,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -157,6 +157,6 @@ def show_data_testing() -> None:
 
     st.dataframe(
         result_dataframe,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )

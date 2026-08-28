@@ -250,7 +250,7 @@ def show_export_buttons(
             data=json_output,
             file_name=JSON_FILE_NAME,
             mime="application/json",
-            use_container_width=True,
+            width="stretch",
         )
 
     with excel_column:
@@ -262,5 +262,5 @@ def show_export_buttons(
                 "application/vnd.openxmlformats-officedocument."
                 "spreadsheetml.sheet"
             ),
-            use_container_width=True,
+            width="stretch",
         )
