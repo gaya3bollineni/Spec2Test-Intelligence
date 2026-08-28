@@ -19,6 +19,9 @@ class DOMElementMatcher:
     Deterministically matches an automation target
     such as "Email", "Country", or "Sign In" against
     elements extracted from the uploaded DOM.
+
+    A semantic match must exist before structural
+    tag/type bonuses are applied.
     """
 
     def match(
@@ -43,7 +46,7 @@ class DOMElementMatcher:
         ] = []
 
         for element in elements:
-            score = 0
+            semantic_score = 0
             matched_by: list[str] = []
 
             fields = [
@@ -98,12 +101,32 @@ class DOMElementMatcher:
                 )
 
                 if field_score:
-                    score += field_score
+                    semantic_score += (
+                        field_score
+                    )
 
                     matched_by.append(
                         field_name
                     )
 
+            # IMPORTANT:
+            # A matching tag/type alone must never
+            # cause an unrelated element to match.
+            #
+            # Example:
+            # Target = "Account Number"
+            # DOM = <input id="email">
+            #
+            # Both may be inputs, but there is no
+            # semantic relationship between them.
+            if semantic_score <= 0:
+                continue
+
+            score = semantic_score
+
+            # Structural information is useful only
+            # after a semantic match has been found.
+            # It helps rank otherwise-valid matches.
             if (
                 expected_tag
                 and element.tag
@@ -127,14 +150,13 @@ class DOMElementMatcher:
                     "type"
                 )
 
-            if score > 0:
-                candidates.append(
-                    ElementMatch(
-                        element=element,
-                        score=score,
-                        matched_by=matched_by,
-                    )
+            candidates.append(
+                ElementMatch(
+                    element=element,
+                    score=score,
+                    matched_by=matched_by,
                 )
+            )
 
         if not candidates:
             return None
@@ -161,12 +183,15 @@ class DOMElementMatcher:
             return 0
 
         normalized_value = (
-            self._normalize(value)
+            self._normalize(
+                value
+            )
         )
 
         if not normalized_value:
             return 0
 
+        # Exact semantic match.
         if target == normalized_value:
             return weight
 
@@ -194,11 +219,13 @@ class DOMElementMatcher:
             / len(target_tokens)
         )
 
+        # All target words exist in the DOM value.
         if overlap_ratio == 1:
             return int(
                 weight * 0.8
             )
 
+        # Partial but meaningful match.
         if overlap_ratio >= 0.5:
             return int(
                 weight * 0.5
@@ -210,6 +237,11 @@ class DOMElementMatcher:
     def _stability_score(
         element: DOMElement,
     ) -> int:
+        """
+        Used only as a tie-breaker between elements
+        with the same semantic/structural score.
+        """
+
         score = 0
 
         if element.label:
@@ -233,6 +265,17 @@ class DOMElementMatcher:
     def _normalize(
         value: str,
     ) -> str:
+        """
+        Normalizes values such as:
+
+        FirstName
+        first_name
+        first-name
+        First Name
+
+        into comparable text.
+        """
+
         value = re.sub(
             r"([a-z])([A-Z])",
             r"\1 \2",

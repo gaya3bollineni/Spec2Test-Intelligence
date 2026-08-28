@@ -200,3 +200,28 @@ def test_returns_none_for_unknown_target() -> None:
     )
 
     assert match is None
+
+def test_structure_alone_does_not_create_match():
+    html = """
+    <input
+        id="completely-unrelated"
+        type="email"
+    />
+    """
+
+    elements = (
+        DOMParser()
+        .parse(html)
+        .elements
+    )
+
+    match = (
+        DOMElementMatcher()
+        .match(
+            "Account Number",
+            elements,
+            expected_tag="input",
+        )
+    )
+
+    assert match is None    
