@@ -1,6 +1,7 @@
 import streamlit as st
 
 from src.models.schemas import TestCase
+from src.playwright.dom_parser import DOMParser
 from src.playwright.generator import PlaywrightGenerator
 
 
@@ -9,8 +10,9 @@ def show_playwright_generation(
 ) -> None:
     """
     Displays Playwright generation controls,
-    generation status, warnings, code preview,
-    and .spec.ts download.
+    optional DOM upload, DOM analysis status,
+    generation warnings, code preview, and
+    .spec.ts download.
     """
 
     st.subheader("Playwright Automation")
@@ -20,19 +22,118 @@ def show_playwright_generation(
         "deterministic Playwright TypeScript tests."
     )
 
-    st.info(
-        "Locators are inferred from requirement and test-step "
-        "information. Spec2Test does not currently inspect the "
-        "application DOM, so generated locators and assertions "
-        "should be reviewed before execution."
-    )
-
     if not test_cases:
         st.warning(
             "Generate test cases before creating "
             "Playwright automation."
         )
         return
+
+    st.markdown(
+        "#### Optional DOM / HTML"
+    )
+
+    st.caption(
+        "Upload application HTML to generate locators "
+        "from actual DOM elements. If no DOM is supplied, "
+        "Spec2Test continues using requirement-inferred "
+        "locators."
+    )
+
+    uploaded_dom = st.file_uploader(
+        "Upload application HTML",
+        type=["html", "htm"],
+        key="playwright_dom_upload",
+        help=(
+            "Optional. Upload an HTML snapshot of the "
+            "application page used by these test cases."
+        ),
+    )
+
+    dom_elements = None
+
+    if uploaded_dom is not None:
+        try:
+            html = uploaded_dom.getvalue().decode(
+                "utf-8"
+            )
+
+            dom_result = DOMParser().parse(
+                html
+            )
+
+            dom_elements = (
+                dom_result.elements
+            )
+
+            if dom_result.elements:
+                st.success(
+                    "DOM analyzed successfully."
+                )
+
+                metric_col, mode_col = (
+                    st.columns(2)
+                )
+
+                with metric_col:
+                    st.metric(
+                        "Interactive Elements",
+                        (
+                            dom_result
+                            .interactive_element_count
+                        ),
+                    )
+
+                with mode_col:
+                    st.metric(
+                        "Locator Mode",
+                        "DOM-Aware",
+                    )
+
+            else:
+                st.warning(
+                    "The uploaded HTML did not contain "
+                    "supported interactive elements. "
+                    "Spec2Test will use inferred locators."
+                )
+
+            if dom_result.warnings:
+                with st.expander(
+                    "DOM Analysis Warnings",
+                    expanded=True,
+                ):
+                    for warning in (
+                        dom_result.warnings
+                    ):
+                        st.markdown(
+                            f"- {warning}"
+                        )
+
+        except UnicodeDecodeError:
+            st.error(
+                "The uploaded HTML could not be read as "
+                "UTF-8 text. Please upload a valid HTML "
+                "file."
+            )
+
+            dom_elements = None
+
+        except Exception as exc:
+            st.error(
+                "The uploaded HTML could not be analyzed: "
+                f"{exc}"
+            )
+
+            dom_elements = None
+
+    else:
+        st.info(
+            "No DOM uploaded. Playwright locators will "
+            "be inferred from requirement and test-step "
+            "information."
+        )
+
+    st.divider()
 
     if st.button(
         "Generate Playwright Test",
@@ -42,10 +143,25 @@ def show_playwright_generation(
         generator = PlaywrightGenerator()
 
         result = generator.generate(
-            test_cases
+            test_cases,
+            dom_elements=dom_elements,
         )
 
-        st.session_state.playwright_result = result
+        st.session_state.playwright_result = (
+            result
+        )
+
+        st.session_state.playwright_locator_mode = (
+            "DOM-Aware"
+            if dom_elements
+            else "Inferred"
+        )
+
+        st.session_state.playwright_dom_count = (
+            len(dom_elements)
+            if dom_elements
+            else 0
+        )
 
     result = st.session_state.get(
         "playwright_result"
@@ -53,6 +169,20 @@ def show_playwright_generation(
 
     if result is None:
         return
+
+    locator_mode = (
+        st.session_state.get(
+            "playwright_locator_mode",
+            "Inferred",
+        )
+    )
+
+    dom_count = (
+        st.session_state.get(
+            "playwright_dom_count",
+            0,
+        )
+    )
 
     st.divider()
 
@@ -62,9 +192,27 @@ def show_playwright_generation(
         f"{'' if result.generated_test_count == 1 else 's'}."
     )
 
-    metric_col, warning_col = st.columns(2)
+    if locator_mode == "DOM-Aware":
+        st.info(
+            "Generation mode: DOM-Aware. "
+            f"{dom_count} interactive DOM element"
+            f"{'' if dom_count == 1 else 's'} "
+            "were available for locator matching."
+        )
 
-    with metric_col:
+    else:
+        st.info(
+            "Generation mode: Inferred. "
+            "No usable DOM was supplied, so locators "
+            "were inferred from requirement and "
+            "test-step information."
+        )
+
+    test_col, warning_col, mode_col = (
+        st.columns(3)
+    )
+
+    with test_col:
         st.metric(
             "Playwright Tests",
             result.generated_test_count,
@@ -74,6 +222,12 @@ def show_playwright_generation(
         st.metric(
             "Review Warnings",
             len(result.warnings),
+        )
+
+    with mode_col:
+        st.metric(
+            "Locator Mode",
+            locator_mode,
         )
 
     if result.warnings:

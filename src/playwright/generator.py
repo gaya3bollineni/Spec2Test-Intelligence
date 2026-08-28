@@ -1,9 +1,10 @@
-from typing import List
+from typing import List, Optional
 
 from src.models.schemas import TestCase
 from src.playwright.action_mapper import (
     PlaywrightActionMapper,
 )
+from src.playwright.dom_models import DOMElement
 from src.playwright.intent import (
     AutomationAssertion,
     AutomationIntent,
@@ -22,8 +23,13 @@ class PlaywrightGenerator:
     Converts Spec2Test TestCase objects into
     deterministic Playwright TypeScript tests.
 
-    Application-specific behavior is left as TODO
-    rather than fabricating unreliable assertions.
+    DOM elements may optionally be supplied to
+    ground generated action locators in uploaded
+    application HTML.
+
+    Application-specific behavior that cannot be
+    safely inferred is left as TODO rather than
+    fabricated.
     """
 
     def __init__(self) -> None:
@@ -38,6 +44,9 @@ class PlaywrightGenerator:
     def generate(
         self,
         test_cases: List[TestCase],
+        dom_elements: Optional[
+            list[DOMElement]
+        ] = None,
     ) -> PlaywrightGenerationResult:
         playwright_tests: list[
             PlaywrightTest
@@ -63,7 +72,10 @@ class PlaywrightGenerator:
 
             actions = (
                 self.action_mapper.map_intent(
-                    intent
+                    intent,
+                    dom_elements=(
+                        dom_elements
+                    ),
                 )
             )
 
