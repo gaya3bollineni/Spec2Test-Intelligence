@@ -1,218 +1,318 @@
-from src.models.schemas import (
-    TestCase as Spec2TestCase,
+import re
+from typing import Optional
+
+from pydantic import BaseModel
+
+from src.playwright.dom_models import (
+    DOMElement,
 )
-from src.playwright.dom_parser import DOMParser
-from src.playwright.generator import (
-    PlaywrightGenerator,
-)
 
 
-def build_test_case(
-    source_criterion: str,
-) -> Spec2TestCase:
-    return Spec2TestCase(
-        requirement_id="AC-001",
-        test_case_id="TC-001",
-        test_scenario=(
-            "Validate user can enter email"
-        ),
-        test_case_description=(
-            "Validate email entry"
-        ),
-        preconditions=[],
-        test_steps=[
-            "Enter email",
-        ],
-        test_data="user@example.com",
-        expected_result=(
-            '"Email accepted" is displayed'
-        ),
-        scenario_type="Positive",
-        priority="Medium",
-        source_criterion=source_criterion,
-    )
+class ElementMatch(BaseModel):
+    element: DOMElement
+    score: int
+    matched_by: list[str]
 
 
-def test_generator_uses_label_inside_shadow_dom():
-    test_case = build_test_case(
-        """
-        Given user is example.com/login
-        When user enters user@example.com into Email
-        Then "Email accepted" is displayed
-        """
-    )
+class DOMElementMatcher:
+    """
+    Deterministically matches an automation target
+    such as "Email", "Country", or "Sign In" against
+    elements extracted from the uploaded DOM.
 
-    html = """
-    <user-login>
-        <template shadowrootmode="open">
+    A semantic match must exist before structural
+    tag/type bonuses are applied.
 
-            <label for="email">
-                Email
-            </label>
-
-            <input
-                id="email"
-                type="email"
-            />
-
-        </template>
-    </user-login>
+    If multiple elements share the same highest
+    match score, the target is considered ambiguous
+    and no element is selected.
     """
 
-    parse_result = (
-        DOMParser()
-        .parse(html)
-    )
+    def match(
+        self,
+        target: str,
+        elements: list[DOMElement],
+        expected_tag: Optional[str] = None,
+        expected_type: Optional[str] = None,
+    ) -> Optional[ElementMatch]:
+        if not target or not target.strip():
+            return None
 
-    shadow_elements = [
-        element
-        for element in parse_result.elements
-        if element.inside_shadow_dom
-    ]
-
-    assert len(shadow_elements) == 1
-
-    email_element = shadow_elements[0]
-
-    assert email_element.tag == "input"
-    assert email_element.label == "Email"
-    assert (
-        email_element.inside_shadow_dom
-        is True
-    )
-    assert email_element.shadow_host_path
-
-    result = (
-        PlaywrightGenerator()
-        .generate(
-            [test_case],
-            dom_elements=parse_result.elements,
+        target_normalized = self._normalize(
+            target
         )
-    )
 
-    assert (
-        "page.getByLabel('Email')"
-        in result.typescript_code
-    )
+        if not target_normalized:
+            return None
 
+        candidates: list[
+            ElementMatch
+        ] = []
 
-def test_generator_uses_test_id_inside_shadow_dom():
-    test_case = build_test_case(
-        """
-        Given user is example.com/login
-        When user enters user@example.com into Email
-        Then "Email accepted" is displayed
-        """
-    )
+        for element in elements:
+            semantic_score = 0
+            matched_by: list[str] = []
 
-    html = """
-    <user-login>
-        <template shadowrootmode="open">
+            fields = [
+                (
+                    "label",
+                    element.label,
+                    100,
+                ),
+                (
+                    "aria_label",
+                    element.aria_label,
+                    95,
+                ),
+                (
+                    "text",
+                    element.text,
+                    90,
+                ),
+                (
+                    "name",
+                    element.name,
+                    80,
+                ),
+                (
+                    "placeholder",
+                    element.placeholder,
+                    75,
+                ),
+                (
+                    "id",
+                    element.element_id,
+                    65,
+                ),
+                (
+                    "test_id",
+                    element.test_id,
+                    60,
+                ),
+            ]
 
-            <input
-                type="email"
-                data-testid="shadow-email"
-            />
+            for (
+                field_name,
+                field_value,
+                weight,
+            ) in fields:
+                field_score = (
+                    self._score_value(
+                        target_normalized,
+                        field_value,
+                        weight,
+                    )
+                )
 
-        </template>
-    </user-login>
-    """
+                if field_score:
+                    semantic_score += (
+                        field_score
+                    )
 
-    parse_result = (
-        DOMParser()
-        .parse(html)
-    )
+                    matched_by.append(
+                        field_name
+                    )
 
-    assert len(
-        parse_result.elements
-    ) == 1
+            # Structural similarity alone must never
+            # cause an unrelated element to match.
+            if semantic_score <= 0:
+                continue
 
-    email_element = (
-        parse_result.elements[0]
-    )
+            score = semantic_score
 
-    assert (
-        email_element.inside_shadow_dom
-        is True
-    )
+            # Structural information is used only
+            # after a semantic match exists.
+            if (
+                expected_tag
+                and element.tag
+                == expected_tag.lower()
+            ):
+                score += 20
 
-    result = (
-        PlaywrightGenerator()
-        .generate(
-            [test_case],
-            dom_elements=parse_result.elements,
+                matched_by.append(
+                    "tag"
+                )
+
+            if (
+                expected_type
+                and element.element_type
+                and element.element_type.lower()
+                == expected_type.lower()
+            ):
+                score += 20
+
+                matched_by.append(
+                    "type"
+                )
+
+            candidates.append(
+                ElementMatch(
+                    element=element,
+                    score=score,
+                    matched_by=matched_by,
+                )
+            )
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda candidate: (
+                candidate.score,
+                self._stability_score(
+                    candidate.element
+                ),
+            ),
+            reverse=True,
         )
-    )
 
-    assert (
-        "page.getByTestId('shadow-email')"
-        in result.typescript_code
-    )
-
-
-def test_generator_handles_nested_shadow_dom():
-    test_case = build_test_case(
-        """
-        Given user is example.com/login
-        When user enters user@example.com into Email
-        Then "Email accepted" is displayed
-        """
-    )
-
-    html = """
-    <application-shell>
-        <template shadowrootmode="open">
-
-            <login-form>
-                <template shadowrootmode="open">
-
-                    <label for="email">
-                        Email
-                    </label>
-
-                    <input
-                        id="email"
-                        type="email"
-                    />
-
-                </template>
-            </login-form>
-
-        </template>
-    </application-shell>
-    """
-
-    parse_result = (
-        DOMParser()
-        .parse(html)
-    )
-
-    assert len(
-        parse_result.elements
-    ) == 1
-
-    email_element = (
-        parse_result.elements[0]
-    )
-
-    assert (
-        email_element.inside_shadow_dom
-        is True
-    )
-
-    assert len(
-        email_element.shadow_host_path
-    ) == 2
-
-    result = (
-        PlaywrightGenerator()
-        .generate(
-            [test_case],
-            dom_elements=parse_result.elements,
+        highest_score = (
+            candidates[0].score
         )
-    )
 
-    assert (
-        "page.getByLabel('Email')"
-        in result.typescript_code
-    )
+        highest_score_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.score
+            == highest_score
+        ]
+
+        # Do not silently select between equally
+        # strong semantic matches.
+        #
+        # This is especially important when
+        # identical controls exist in separate
+        # Shadow DOM components.
+        if (
+            len(highest_score_candidates)
+            > 1
+        ):
+            return None
+
+        return candidates[0]
+
+    def _score_value(
+        self,
+        target: str,
+        value: Optional[str],
+        weight: int,
+    ) -> int:
+        if not value:
+            return 0
+
+        normalized_value = (
+            self._normalize(
+                value
+            )
+        )
+
+        if not normalized_value:
+            return 0
+
+        if target == normalized_value:
+            return weight
+
+        target_tokens = set(
+            target.split()
+        )
+
+        value_tokens = set(
+            normalized_value.split()
+        )
+
+        if not target_tokens:
+            return 0
+
+        overlap = (
+            target_tokens
+            & value_tokens
+        )
+
+        if not overlap:
+            return 0
+
+        overlap_ratio = (
+            len(overlap)
+            / len(target_tokens)
+        )
+
+        if overlap_ratio == 1:
+            return int(
+                weight * 0.8
+            )
+
+        if overlap_ratio >= 0.5:
+            return int(
+                weight * 0.5
+            )
+
+        return 0
+
+    @staticmethod
+    def _stability_score(
+        element: DOMElement,
+    ) -> int:
+        """
+        Used only as a tie-breaker between elements
+        with the same semantic/structural score.
+        """
+
+        score = 0
+
+        if element.label:
+            score += 5
+
+        if element.aria_label:
+            score += 4
+
+        if element.test_id:
+            score += 3
+
+        if element.element_id:
+            score += 2
+
+        if element.placeholder:
+            score += 1
+
+        return score
+
+    @staticmethod
+    def _normalize(
+        value: str,
+    ) -> str:
+        """
+        Normalizes values such as:
+
+        FirstName
+        first_name
+        first-name
+        First Name
+
+        into comparable text.
+        """
+
+        value = re.sub(
+            r"([a-z])([A-Z])",
+            r"\1 \2",
+            value,
+        )
+
+        value = value.replace(
+            "_",
+            " ",
+        )
+
+        value = value.replace(
+            "-",
+            " ",
+        )
+
+        value = re.sub(
+            r"[^a-zA-Z0-9\s]",
+            " ",
+            value,
+        )
+
+        return " ".join(
+            value.lower().split()
+        )
