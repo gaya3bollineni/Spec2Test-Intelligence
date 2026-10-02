@@ -8,6 +8,8 @@ It then generates structured test cases based on requirement priority, creates a
 
 For Playwright generation, users can optionally provide HTML/DOM input so Spec2Test can match requirement interactions to application elements and generate more grounded locators.
 
+The DOM-aware automation layer also supports interactive elements inside **open declarative Shadow DOM**, including nested shadow roots.
+
 The current release is intentionally **deterministic and explainable**. LLM-based semantic analysis is not required by the current processing pipeline.
 
 ---
@@ -55,10 +57,13 @@ It evaluates the requirement first, explains potential quality issues, generates
 | DOM Element Matching | Matches automation intent against relevant DOM elements |
 | Locator Ranking | Selects resilient Playwright locators using deterministic rules |
 | DOM-Aware Playwright | Uses uploaded DOM information when available and safely falls back to inferred locators |
+| Shadow DOM Analysis | Detects interactive elements inside open declarative Shadow DOM, including nested shadow roots |
+| Shadow Host Tracking | Preserves shadow-host paths for elements discovered inside Shadow DOM |
+| Ambiguous Locator Detection | Avoids silently selecting between equally strong DOM matches and safely falls back when the target is ambiguous |
 | Playwright Export | Downloads generated automation as a `.spec.ts` file |
 | Automation Review Warnings | Identifies generated tests where executable behavior or assertions require human review |
 | Data Testing Foundation | Generates basic field-level data validation scenarios from structured rules |
-| Automated Testing | Regression suite covering requirements intelligence, test generation, data testing, and Playwright generation |
+| Automated Testing | Regression suite covering requirements intelligence, test generation, data testing, DOM/Shadow DOM analysis, and Playwright generation |
 | CI | GitHub Actions executes automated regression tests |
 
 ---
@@ -97,17 +102,21 @@ Risk-Based Test Generation
                        │
              ┌─────────┴─────────┐
              │                   │
-          No DOM             HTML / DOM
+          No DOM          HTML / DOM Input
              │                   │
              ▼                   ▼
-      Inferred Locator       DOM Parsing
-                                 │
-                                 ▼
-                          Element Matching
-                                 │
-                                 ▼
-                          Locator Ranking
-                                 │
+      Inferred Locator     DOM + Shadow DOM
+                                Parsing
+                                  │
+                                  ▼
+                           Element Matching
+                                  │
+                                  ▼
+                         Ambiguity Detection
+                                  │
+                                  ▼
+                           Locator Ranking
+                                  │
              └─────────┬─────────┘
                        ▼
               TypeScript Generation
@@ -274,7 +283,7 @@ When Spec2Test cannot safely infer sufficient executable behavior or an assertio
 
 ## DOM-Aware Playwright Generation
 
-Spec2Test supports two locator-generation modes.
+Spec2Test supports requirement-inferred and DOM-aware locator generation.
 
 ### Requirement-Inferred Mode
 
@@ -328,6 +337,143 @@ DOM input remains **optional**. Existing requirement-only automation generation 
 
 ---
 
+## Shadow DOM Support
+
+Spec2Test supports interactive elements inside **open declarative Shadow DOM**, including nested shadow roots.
+
+### Single Shadow Root
+
+For example:
+
+```html
+<user-login>
+  <template shadowrootmode="open">
+
+    <label for="email">
+      Email
+    </label>
+
+    <input
+      id="email"
+      type="email"
+    />
+
+    <button>
+      Sign In
+    </button>
+
+  </template>
+</user-login>
+```
+
+Spec2Test can discover the interactive elements inside the open shadow root and make them available to the existing deterministic DOM matching and Playwright generation pipeline.
+
+For example, the Email field can still result in a Playwright locator such as:
+
+```typescript
+await page
+  .getByLabel('Email')
+  .fill('user@example.com');
+```
+
+### Nested Shadow DOM
+
+Nested open shadow roots are also supported.
+
+```html
+<application-shell>
+  <template shadowrootmode="open">
+
+    <login-form>
+      <template shadowrootmode="open">
+
+        <label for="email">
+          Email
+        </label>
+
+        <input
+          id="email"
+          type="email"
+        />
+
+        <button>
+          Sign In
+        </button>
+
+      </template>
+    </login-form>
+
+  </template>
+</application-shell>
+```
+
+For elements discovered inside Shadow DOM, Spec2Test preserves the **shadow-host path**, with outer hosts recorded before inner hosts.
+
+This allows the DOM analysis layer to retain component context instead of flattening every discovered element into an indistinguishable DOM list.
+
+### Shadow DOM in the Streamlit UI
+
+When uploaded HTML contains supported Shadow DOM, the Playwright Automation interface reports:
+
+- Total interactive elements
+- Interactive elements discovered inside Shadow DOM
+- Open shadow roots represented in the uploaded HTML
+- Whether nested Shadow DOM was detected
+- `DOM + Shadow DOM` as the locator-generation mode
+
+Plain HTML continues to use the existing `DOM-Aware` mode.
+
+### Ambiguous DOM Targets
+
+Spec2Test does not silently choose between equally strong DOM matches.
+
+For example:
+
+```html
+<customer-login>
+  <template shadowrootmode="open">
+    <label for="customer-email">Email</label>
+    <input id="customer-email" type="email" />
+  </template>
+</customer-login>
+
+<admin-login>
+  <template shadowrootmode="open">
+    <label for="admin-email">Email</label>
+    <input id="admin-email" type="email" />
+  </template>
+</admin-login>
+```
+
+Both inputs are semantically strong matches for the target `Email`.
+
+If multiple candidates receive the same highest match score, Spec2Test treats the DOM match as ambiguous rather than arbitrarily selecting one.
+
+The existing requirement-inferred locator fallback can then be used instead of generating automation against an arbitrary DOM element.
+
+### Current Shadow DOM Scope
+
+Supported:
+
+- Open declarative Shadow DOM
+- Nested open shadow roots
+- Interactive-element discovery inside shadow roots
+- Shadow-host path preservation
+- DOM element matching
+- Playwright locator generation
+- Ambiguous-target detection
+- Safe fallback when a reliable DOM target cannot be selected
+
+Not currently supported:
+
+- Closed Shadow DOM
+- Extracting Shadow DOM created dynamically at runtime from a live application
+- Browser execution inside Spec2Test
+
+Spec2Test generates Playwright automation but does not execute the generated browser tests.
+
+---
+
 ## DOM Locator Strategy
 
 The DOM-aware Playwright layer uses deterministic locator selection.
@@ -346,6 +492,8 @@ Supported locator strategies include:
 The matcher first requires meaningful semantic evidence between the automation target and a DOM element.
 
 Structural information such as HTML tag or input type can strengthen an existing semantic match, but structural similarity alone does not create a match.
+
+If multiple elements share the same highest matching score, Spec2Test treats the result as ambiguous rather than silently selecting the first candidate.
 
 If no suitable DOM element can be identified, Spec2Test safely falls back to its requirement-inferred locator rather than forcing an unrelated DOM match.
 
@@ -409,9 +557,10 @@ flowchart TD
     J --> P[Playwright Intent Extraction]
     P --> Q[Playwright Action Mapper]
 
-    T[Optional HTML / DOM] --> U[DOM Parser]
+    T[Optional HTML / DOM] --> U[DOM + Open Shadow DOM Parser]
     U --> V[DOM Element Matcher]
-    V --> W[DOM Locator Generator]
+    V --> X[Ambiguity Detection]
+    X --> W[DOM Locator Generator]
     W --> Q
 
     Q --> R[Playwright TypeScript Generator]
@@ -454,7 +603,10 @@ Spec2Test-Intelligence/
 │       └── traceability.py
 │
 ├── examples/
-│   └── sample_dom.html
+│   ├── sample_dom.html
+│   ├── sample_plain_dom.html
+│   ├── sample_shadow_dom_single.html
+│   └── sample_shadow_dom.html
 │
 ├── src/
 │   ├── analytics/
@@ -519,7 +671,7 @@ PYTHONPATH=. python3 -m pytest tests/ -q
 Current verified regression status:
 
 ```text
-144 passed
+147 passed
 ```
 
 Coverage can be generated with:
@@ -567,7 +719,13 @@ Playwright automation is **generated but not executed by Spec2Test**. Generated 
 
 DOM-aware locator generation operates on optional uploaded HTML. It does not connect to or inspect a live application.
 
-DOM parsing currently focuses on supported interactive HTML elements and deterministic matching rules.
+DOM analysis supports standard interactive HTML and **open declarative Shadow DOM**, including nested open shadow roots.
+
+Closed Shadow DOM is not supported.
+
+Spec2Test does not currently extract Shadow DOM that is created dynamically at runtime from a live application.
+
+If multiple DOM elements are equally strong matches for an automation target, Spec2Test avoids arbitrarily selecting one and allows its existing inferred-locator fallback behavior to take over.
 
 If DOM matching cannot identify an appropriate element, Spec2Test falls back to requirement-inferred locator generation.
 
@@ -629,10 +787,15 @@ The suite currently validates areas including:
 - DOM-aware action mapping
 - DOM-aware TypeScript generation
 - Safe locator fallback behavior
+- Open Shadow DOM parsing
+- Nested Shadow DOM parsing
+- Shadow-host path preservation
+- Shadow DOM Playwright generation
+- Ambiguous DOM target detection
 
 Current verified regression status:
 
-**144 passing tests**
+**147 passing tests**
 
 ---
 
@@ -656,6 +819,7 @@ Issues can be used for:
 - Enhancement proposals
 - Requirement-analysis ideas
 - Playwright generation improvements
+- DOM and Shadow DOM scenarios
 - Additional deterministic rules
 - Regression test cases
 
@@ -671,6 +835,6 @@ This project is distributed under the license included in the repository.
 
 ## Status
 
-**Deterministic MVP — Requirements Intelligence + Risk-Based Test Design + DOM-Aware Playwright Generation**
+**Deterministic MVP — Requirements Intelligence + Risk-Based Test Design + DOM & Shadow DOM-Aware Playwright Generation**
 
 The current goal is to validate the architecture, gather developer and QA feedback, and evolve Spec2Test based on real usage while keeping requirement analysis, test generation, and automation explainable.
